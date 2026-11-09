@@ -10,7 +10,7 @@ import type { Mailer } from '../src/auth/mailer.js'
 import { loadConfig, type Config } from '../src/config.js'
 import { openDb, type Db } from '../src/db.js'
 
-export const TEST_DATABASE_URL = process.env.AKILI_TEST_DATABASE_URL ?? 'postgresql://akili@127.0.0.1:5433/akili_test'
+export const TEST_DATABASE_URL = process.env.AKILI_TEST_DATABASE_URL ?? 'postgresql://akili:akili@127.0.0.1:5432/akili'
 export const ORIGIN = 'http://localhost:3000'
 
 export interface TestDb { db: Db; drop(): Promise<void> }

@@ -1,0 +1,14 @@
+.git
+**/node_modules
+**/dist
+data
+.env
+.env.*
+!.env.example
+vendor
+fixtures
+docs
+.superpowers
+.claude
+.akili
+*.log

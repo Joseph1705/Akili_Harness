@@ -12,8 +12,10 @@
     "credits": "tsx plugins/credits/scripts/credits.ts",
     "dsh": "node scripts/dsh.mjs",
     "smoke": "node scripts/smoke.mjs",
-    "demo": "node scripts/demo.mjs",
-    "build": "pnpm --filter @akili/web build"
+    "build": "pnpm --filter @akili/web build && pnpm --filter @akili/server build",
+    "dev:db": "docker compose -f docker-compose.dev.yml up -d",
+    "dev": "pnpm --filter @akili/web build && pnpm --filter @akili/server dev",
+    "dev:web": "pnpm --filter @akili/web dev"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",

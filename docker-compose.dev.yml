@@ -1,0 +1,18 @@
+# Local development: a PostgreSQL for `pnpm dev` and `pnpm test`.
+#   docker compose -f docker-compose.dev.yml up -d
+name: akili-dev
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: akili
+      POSTGRES_PASSWORD: akili
+      POSTGRES_DB: akili
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - dev_db:/var/lib/postgresql/data
+
+volumes:
+  dev_db:

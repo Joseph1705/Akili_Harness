@@ -21,6 +21,17 @@ describe('server foundation', () => {
     expect(res.headers['x-content-type-options']).toBe('nosniff')
   })
 
+  it('upgrades requests to HTTPS only when the site is served over HTTPS', async () => {
+    t = await createTestApp()
+    const http = await t.app.inject({ method: 'GET', url: '/api/health' })
+    expect(http.headers['content-security-policy']).not.toContain('upgrade-insecure-requests')
+    await t.close()
+    t = await createTestApp({ AKILI_PUBLIC_ORIGIN: 'https://app.example.cd' })
+    const https = await t.app.inject({ method: 'GET', url: '/api/health' })
+    expect(https.headers['content-security-policy']).toContain('upgrade-insecure-requests')
+    expect(https.headers['strict-transport-security']).toContain('max-age=')
+  })
+
   it('answers unknown API routes with a JSON 404', async () => {
     t = await createTestApp()
     const res = await t.app.inject({ method: 'GET', url: '/api/nope' })

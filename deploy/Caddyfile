@@ -1,0 +1,32 @@
+# HTTPS in front of the application. Nothing to edit here:
+# set APP_DOMAIN (and ACME_EMAIL) in .env, then `docker compose up -d`.
+#   APP_DOMAIN=app.votre-domaine.com  → certificate obtained and renewed automatically
+#   APP_DOMAIN=:80                    → plain HTTP by IP, only for a first test before the domain exists
+{
+	email {$ACME_EMAIL}
+}
+
+{$APP_DOMAIN} {
+	encode zstd gzip
+
+	# Report uploads: up to 10 files of 15 MB per request.
+	request_body {
+		max_size 160MB
+	}
+
+	reverse_proxy app:3000 {
+		health_uri /api/health
+		health_interval 30s
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}
+
+# Landing page, later (same server):
+# {$SITE_DOMAIN} {
+# 	root * /srv/site
+# 	file_server
+# }

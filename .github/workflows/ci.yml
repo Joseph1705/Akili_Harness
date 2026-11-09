@@ -1,0 +1,31 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: akili
+          POSTGRES_PASSWORD: akili
+          POSTGRES_DB: akili
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U akili" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      AKILI_TEST_DATABASE_URL: postgresql://akili:akili@127.0.0.1:5432/akili
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: corepack enable && corepack prepare pnpm@11.28.5 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm --filter @akili/web build && pnpm --filter @akili/server build

@@ -476,3 +476,8 @@ _À remplir par Claude Code à la fin de chaque session : date, ce qui a été f
 - **Décisions :** ADR 005 ; règles notées dans le plan (numérotation à la validation, « Valider la facture » au lieu de « Valider et envoyer », libellé d'hébergement réel).
 - **Risques :** démo sur données fictives ; pas d'envoi e-mail ni mobile money ; i18n partielle ; fichiers XLSX très compressés non bornés ; assistant libre non branché.
 - **Prochaine étape :** clés API pour l'assistant via dsh, vrais formats de rapports du client 1, connecteur e-mail.
+
+### 2026-11-10 — prêt pour la production
+- **Fait :** PostgreSQL 16 (schéma complet, migrations, verrous), codes de connexion par SMTP (Gmail), mode démo supprimé, clients et contrats gérés dans l'interface, recharges par les administrateurs de la plateforme, crédits de bienvenue, Docker Compose (Caddy + app + db), Caddyfile piloté par `.env`, sauvegarde quotidienne locale, CI GitHub. 81 tests sur PostgreSQL ; image construite et pile complète démarrée.
+- **Décisions :** ADR 006.
+- **Reste :** paiement, landing page, sauvegarde externe chiffrée, RLS, fournisseur d'e-mails transactionnels, supervision.

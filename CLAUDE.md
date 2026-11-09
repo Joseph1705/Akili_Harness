@@ -27,7 +27,9 @@ Décisions d'architecture : `docs/decisions/`. Notes sur le cœur : `docs/dsh-no
 - Node `>=24.9` (exigé par dsh). Gestionnaire : pnpm.
 - Installer dsh : `cd vendor/deepseek-harness && CI=true pnpm install --frozen-lockfile && pnpm run build`
   (`CI=true` saute l'installation des hooks git de dsh, qui échoue dans un sous-module).
-- Lancer : `pnpm dsh web` (voir README). Tests : `pnpm test`. Types : `pnpm typecheck`.
+- Application : `apps/server` (PostgreSQL) + `apps/web`. Dev : `pnpm dev:db` puis `pnpm dev`. Tests : `pnpm test` (PostgreSQL requis, `AKILI_TEST_DATABASE_URL`). Types : `pnpm typecheck`.
+- Production : `docker compose up -d --build` (Caddy + app + db), guide `docs/guides/deploiement.md`. Jamais de secret dans le dépôt : `.env` sur le serveur seulement.
+- Moteur d'agent dsh : `pnpm dsh web` (voir README), vérification `pnpm smoke`.
 ## Méthode obligatoire : Superpowers (`.claude/skills/`)
 
 Exigence du fondateur : **toujours** utiliser les skills Superpowers pour construire ce projet.

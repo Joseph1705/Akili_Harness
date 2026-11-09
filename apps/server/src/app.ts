@@ -54,6 +54,8 @@ export async function buildApp(input: AppDeps): Promise<FastifyInstance> {
         frameAncestors: ["'none'"],
         baseUri: ["'none'"],
         formAction: ["'self'"],
+        // Only over HTTPS: on a first test by IP (plain HTTP) it would break every request.
+        upgradeInsecureRequests: input.config.cookieSecure ? [] : null,
       },
     },
     crossOriginEmbedderPolicy: false,
