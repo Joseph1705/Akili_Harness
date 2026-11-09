@@ -1,0 +1,9 @@
+{
+  "name": "@akili/credits",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Prepaid credits and plan-based model routing for DeepSeek Harness (akili-credits plugin).",
+  "main": "src/index.ts",
+  "license": "UNLICENSED"
+}

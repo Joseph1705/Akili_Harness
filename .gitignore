@@ -1,0 +1,8 @@
+node_modules/
+.env
+.env.*
+*.log
+# Credit ledgers and any local data stay out of git (rule 4).
+*.jsonl
+data/
+.akili/

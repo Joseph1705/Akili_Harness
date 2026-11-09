@@ -1,0 +1,69 @@
+# Akili overlay for DeepSeek Harness (dsh 0.2.2-rc.1, pinned in vendor/deepseek-harness).
+# Applied with `dsh web --patch`; it changes configuration only, never the dsh core (rule 1).
+# scripts/dsh.mjs replaces __AKILI_ROOT__ with the absolute path of this repository
+# (dsh requires absolute plugin paths) and writes the result to .akili/overlay.yml.
+#
+# Settings come from environment variables so no organization data lives in git (rule 4):
+#   AKILI_ORG_ID                    organization id in the credit ledger
+#   AKILI_PLAN                      solo | entreprise
+#   AKILI_EXTERNAL_MODEL_CONSENT    "oui" only after the organization consented (rule 5)
+#   AKILI_LEDGER                    credit journal path (default ~/.akili/credits.jsonl)
+#   DEEPSEEK_API_KEY / ANTHROPIC_API_KEY   provider keys, never committed (rule 11)
+
+# No client metadata to DeepSeek beyond the model request itself (rules 4 and 5):
+# the official route would otherwise attach the installed plugin list to every request.
+# Session telemetry to DeepSeek's collector is switched off by scripts/dsh.mjs
+# (DSH_TELEMETRY_DISABLED), because a config row cannot disable that plugin.
+- id: plugin-package-inventory-deepseek
+  config:
+    enabled: false
+
+# Solo plan route: the official DeepSeek API, billed through our key.
+- id: llm-deepseek
+  config:
+    apiKeyEnv: DEEPSEEK_API_KEY
+
+# The DeepSeek account route bills the user's own DeepSeek account, outside our credits.
+- id: llm-deepseek-account
+  disabled: true
+
+# Company plan route: Claude Opus 5.5 on the Anthropic API, through the pi-ai adapter dsh ships.
+- id: llm-pi-ai
+  config:
+    providers:
+      anthropic:
+        apiKeyEnv: ANTHROPIC_API_KEY
+        models:
+          - id: claude-opus-5-5
+
+- insert:
+    - id: akili-credits
+      name: '__AKILI_ROOT__/plugins/credits/src/index.ts'
+      config:
+        orgId: !!js process.env.AKILI_ORG_ID || 'org-demo'
+        plan: !!js process.env.AKILI_PLAN || 'solo'
+        externalModelConsent: !!js process.env.AKILI_EXTERNAL_MODEL_CONSENT === 'oui'
+        ledgerPath: !!js process.env.AKILI_LEDGER || '~/.akili/credits.jsonl'
+        locale: fr
+        # 1 credit sells for 0.01 USD; credits cover the provider cost plus the margin.
+        creditValueUsd: 0.01
+        markupPercent: 30
+        minBalanceCredits: 1
+        # USD per million tokens. Each price states its source; verify before selling (rule 12).
+        prices:
+          anthropic/claude-opus-5-5:
+            inputUsdPerMTok: 4
+            outputUsdPerMTok: 20
+            cacheReadUsdPerMTok: 0.2
+            cacheWriteUsdPerMTok: 5
+            source: 'Anthropic API list price (Claude API skill table 2026-11-03; pi-ai 1.3.0 catalog agrees). Verify on anthropic.com/pricing.'
+          deepseek-official/deepseek-flash:
+            inputUsdPerMTok: 0.3
+            outputUsdPerMTok: 1.2
+            cacheReadUsdPerMTok: 0.006
+            source: 'pi-ai 1.3.0 catalog bundled with dsh 0.2.2-rc.1, read 2026-11-09. NOT verified: check the official DeepSeek price page.'
+          deepseek-official/deepseek-v4-pro:
+            inputUsdPerMTok: 1.32
+            outputUsdPerMTok: 3.96
+            cacheReadUsdPerMTok: 0.044
+            source: 'pi-ai 1.3.0 catalog bundled with dsh 0.2.2-rc.1, read 2026-11-09. NOT verified: check the official DeepSeek price page.'
