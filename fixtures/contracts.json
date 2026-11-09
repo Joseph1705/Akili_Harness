@@ -1,0 +1,77 @@
+{
+  "_note": "Données entièrement fictives (règle 4). Toute ressemblance avec une entreprise réelle serait fortuite.",
+  "provider": {
+    "name": "Kibala Services SARL",
+    "address": "Av. Lumumba 214, Lubumbashi",
+    "rccm": "CD/LSH/RCCM/21-B-01234",
+    "id_nat": "6-128-N12345X",
+    "nif": "A1234567X",
+    "bank_details": "Paiement par virement — compte USD n° 00011-01234-5678901-23 (fictif). Merci de rappeler le numéro de facture.",
+    "city": "Lubumbashi",
+    "province": "Haut-Katanga",
+    "sector": "Sous-traitance minière"
+  },
+  "clients": [
+    {
+      "key": "tshala",
+      "name": "Tshala Logistique SARL",
+      "address": "Route Kipushi km 9, Lubumbashi",
+      "nif": "A0987654K",
+      "rccm": "CD/LSH/RCCM/18-B-04567",
+      "email": "comptabilite@tshala-logistique.example",
+      "vat_applicable": true,
+      "contract": {
+        "reference": "CT-TSH-2026",
+        "po_number": "BC-0932",
+        "currency": "USD",
+        "payment_terms_days": 15,
+        "rates": [
+          { "code": "GRU-25", "label": "Location grue mobile 25 t", "unit": "jour", "unit_price": "640.00", "max_qty": "20" },
+          { "code": "OPE-CERT", "label": "Opérateur certifié", "unit": "heure", "unit_price": "35.00", "max_qty": "200" },
+          { "code": "TRA-AR", "label": "Transport aller-retour et mise en place", "unit": "forfait", "unit_price": "1720.00", "max_qty": "2" }
+        ]
+      }
+    },
+    {
+      "key": "kalembe",
+      "name": "Kalembe Mining SA",
+      "address": "Concession KM-07, route de Likasi, Haut-Katanga",
+      "nif": "B2345678M",
+      "rccm": "CD/LSH/RCCM/15-B-00321",
+      "email": "ap@kalembe-mining.example",
+      "vat_applicable": true,
+      "contract": {
+        "reference": "CT-KMS-2026-03",
+        "po_number": "BC-KM-2026-117",
+        "currency": "USD",
+        "payment_terms_days": 45,
+        "rates": [
+          { "code": "FOR-DTH", "label": "Forage DTH Ø 115 mm", "unit": "mètre", "unit_price": "42.50", "max_qty": "2000" },
+          { "code": "CAM-30", "label": "Camion benne 30 t avec chauffeur", "unit": "heure", "unit_price": "85.00", "max_qty": "300" },
+          { "code": "NIV-140", "label": "Niveleuse CAT 140 avec opérateur", "unit": "heure", "unit_price": "95.00", "max_qty": "200" },
+          { "code": "MOB", "label": "Mobilisation / démobilisation", "unit": "forfait", "unit_price": "2500.00", "max_qty": "1" }
+        ]
+      }
+    },
+    {
+      "key": "lualaba",
+      "name": "Lualaba Minerals SARL",
+      "address": "Site de Musonoi, Kolwezi, Lualaba",
+      "nif": "C3456789P",
+      "rccm": "CD/KZI/RCCM/19-B-00888",
+      "email": "factures@lualaba-minerals.example",
+      "vat_applicable": false,
+      "contract": {
+        "reference": "CT-LMS-2026",
+        "po_number": "BC-LM-0458",
+        "currency": "USD",
+        "payment_terms_days": 30,
+        "rates": [
+          { "code": "GAR-SEC", "label": "Gardiennage de site", "unit": "agent-jour", "unit_price": "28.00", "max_qty": "400" },
+          { "code": "ENT-PIS", "label": "Entretien de pistes", "unit": "km", "unit_price": "310.00", "max_qty": "40" },
+          { "code": "ARR-CIT", "label": "Arrosage anti-poussière", "unit": "citerne", "unit_price": "140.00", "max_qty": "60" }
+        ]
+      }
+    }
+  ]
+}
