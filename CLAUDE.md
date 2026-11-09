@@ -28,5 +28,16 @@ Décisions d'architecture : `docs/decisions/`. Notes sur le cœur : `docs/dsh-no
 - Installer dsh : `cd vendor/deepseek-harness && CI=true pnpm install --frozen-lockfile && pnpm run build`
   (`CI=true` saute l'installation des hooks git de dsh, qui échoue dans un sous-module).
 - Lancer : `pnpm dsh web` (voir README). Tests : `pnpm test`. Types : `pnpm typecheck`.
-- Skills de méthode : `.claude/skills/` (Superpowers, MIT). Avant une fonctionnalité :
-  brainstorming → writing-plans → test-driven-development → verification-before-completion.
+## Méthode obligatoire : Superpowers (`.claude/skills/`)
+
+Exigence du fondateur : **toujours** utiliser les skills Superpowers pour construire ce projet.
+Pour chaque fonctionnalité, correction ou changement de comportement, dans cet ordre :
+
+1. `brainstorming` : clarifier le besoin avec le fondateur avant toute conception.
+2. `writing-plans` : plan écrit dans `docs/plans/`, validé par le fondateur avant le code.
+3. `test-driven-development` : test qui échoue d'abord, puis le code.
+4. `systematic-debugging` : pour tout bug ou test rouge, avant de proposer un correctif.
+5. `verification-before-completion` : prouver par les commandes (`pnpm test`, `pnpm typecheck`, `pnpm smoke`) avant de dire « fini ».
+6. `requesting-code-review` / `finishing-a-development-branch` : avant de proposer une fusion.
+
+Exprimer les explications au fondateur simplement, sans jargon.
