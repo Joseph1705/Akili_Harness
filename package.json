@@ -8,10 +8,12 @@
   },
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p apps/web",
     "credits": "tsx plugins/credits/scripts/credits.ts",
     "dsh": "node scripts/dsh.mjs",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "demo": "node scripts/demo.mjs",
+    "build": "pnpm --filter @akili/web build"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",

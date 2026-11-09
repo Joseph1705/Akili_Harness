@@ -14,6 +14,7 @@ import { clientRoutes } from './invoicing/client-routes.js'
 import { sessionRoutes } from './sessions/routes.js'
 
 const UNSAFE = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
+export const APP_VERSION = '0.1.0'
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   const { db, config } = app.deps
@@ -34,6 +35,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
   })
 
+  app.get('/public/config', async () => ({ brand: config.brand, hostingLabel: config.hostingLabel, demoMode: config.demoMode, version: APP_VERSION }))
   await app.register(authRoutes, { prefix: '/auth' })
   await app.register(auditRoutes, { prefix: '/audit' })
   await app.register(orgRoutes)

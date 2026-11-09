@@ -19,6 +19,8 @@ export interface Config {
   hostingLabel: string
   /** Built web interface to serve, when present. */
   webDist: string | undefined
+  /** Product name shown in the interface; [NOM_MARQUE] until the founder chooses (directive). */
+  brand: string
   /** Model keys present in the environment (values never stored here). */
   models: { deepseek: boolean; anthropic: boolean }
 }
@@ -68,6 +70,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     cookieSecure: origin.protocol === 'https:',
     hostingLabel: env.AKILI_HOSTING_LABEL ?? (production ? fail('AKILI_HOSTING_LABEL', 'is required in production (real hosting region)') : 'Serveur local — démonstration'),
     webDist: env.AKILI_WEB_DIST,
+    brand: env.AKILI_BRAND_NAME?.trim() || 'Akili',
     models: { deepseek: Boolean(env.DEEPSEEK_API_KEY), anthropic: Boolean(env.ANTHROPIC_API_KEY) },
   }
 }

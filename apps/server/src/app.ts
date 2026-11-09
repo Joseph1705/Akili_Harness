@@ -89,13 +89,19 @@ export async function buildApp(input: AppDeps): Promise<FastifyInstance> {
 
   const webDist = input.config.webDist
   if (webDist && existsSync(webDist)) {
-    await app.register(fastifyStatic, { root: webDist, index: ['index.html'], wildcard: false })
+    await app.register(fastifyStatic, {
+      root: webDist, index: ['index.html'], wildcard: true,
+      // Hashed build assets never change; the page itself must be re-read after each deployment.
+      setHeaders: (res, path) => res.setHeader('cache-control', path.includes('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache'),
+    })
   }
   app.setNotFoundHandler((request, reply) => {
-    if (request.url.startsWith('/api/') || !webDist || request.method !== 'GET') {
+    // Page routes get the app; a missing file (script, style, image) is a real 404, never HTML.
+    const path = request.url.split('?')[0]!
+    if (path.startsWith('/api/') || !webDist || request.method !== 'GET' || /\.[a-z0-9]{1,8}$/i.test(path)) {
       return reply.status(404).send({ error: 'not_found', message: 'Introuvable.' })
     }
-    return reply.type('text/html').sendFile('index.html')
+    return reply.type('text/html').header('cache-control', 'no-cache').sendFile('index.html')
   })
   return app
 }

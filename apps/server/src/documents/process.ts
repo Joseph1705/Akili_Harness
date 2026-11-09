@@ -93,7 +93,7 @@ export async function processDocument(app: FastifyInstance, orgId: string, docum
     db.prepare('UPDATE agents SET last_action_at = ? WHERE id = ? AND org_id = ?').run(now(), doc.agent_id, orgId)
   })
   const warnings = draft.checks.filter(c => c.status === 'warning' || c.status === 'error')
-  step('Calculer', `${draft.lines.length} lignes · TVA ${draft.vatRateBp / 100} %`, `${formatMoney(draft.totalCents)} ${contract.currency} TTC`)
+  step('Calculer', `${draft.lines.length} ligne${draft.lines.length > 1 ? 's' : ''} · TVA ${draft.vatRateBp / 100} %`, `${formatMoney(draft.totalCents)} ${contract.currency} TTC`)
   step('Préparer', number, warnings.length ? `${warnings.length} point${warnings.length > 1 ? 's' : ''} à vérifier` : 'tous les contrôles sont passés')
   say(`Projet de facture ${number} prêt pour ${client.name} : ${formatMoney(draft.totalCents)} ${contract.currency} TTC. Il attend votre validation.`)
   audit(db, { orgId, userId: null }, 'invoice.drafted', 'invoice', invoiceId, { document: documentId, agent: doc.agent_id })

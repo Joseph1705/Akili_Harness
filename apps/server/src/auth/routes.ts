@@ -96,7 +96,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     }
     return {
       user, org, orgs,
-      app: { demoMode: config.demoMode, hostingLabel: config.hostingLabel, models: config.models },
+      app: { brand: config.brand, demoMode: config.demoMode, hostingLabel: config.hostingLabel, models: config.models },
     }
   })
 

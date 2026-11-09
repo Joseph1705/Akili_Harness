@@ -53,6 +53,16 @@ describe('dashboard and sessions', () => {
     expect(d.credits).toBe(18)
   })
 
+  it('writes singular and plural correctly in the transcript', async () => {
+    t = await createTestApp()
+    const o = await readyOrg(t)
+    const sessionId = (await o.upload('RA-2026-10-031_Kalembe_Anomalies.pdf')).json().sessionId
+    await drainJobs(t.app)
+    const s = (await o.call('GET', `/api/sessions/${sessionId}`)).json()
+    const calc = s.events.find((e: { content: { name?: string } }) => e.content.name === 'Calculer')
+    expect(calc.content.arg).toBe('1 ligne · TVA 16 %')
+  })
+
   it('keeps the agent steps in the session transcript', async () => {
     t = await createTestApp()
     const o = await readyOrg(t)
@@ -61,6 +71,8 @@ describe('dashboard and sessions', () => {
     const s = (await o.call('GET', `/api/sessions/${sessionId}`)).json()
     const tools = s.events.filter((e: { role: string }) => e.role === 'tool').map((e: { content: { name: string } }) => e.content.name)
     expect(tools).toEqual(['Lire', 'Rapprocher', 'Calculer', 'Préparer'])
+    const calc = s.events.find((e: { content: { name?: string } }) => e.content.name === 'Calculer')
+    expect(calc.content.arg).toBe('3 lignes · TVA 16 %')
     expect((await o.call('GET', '/api/sessions')).json().sessions[0].id).toBe(sessionId)
   })
 

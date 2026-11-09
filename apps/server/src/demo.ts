@@ -1,11 +1,11 @@
 /** Demo data (fictitious, fixtures/contracts.json). Only available in demo mode. */
 import type { FastifyInstance } from 'fastify'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { audit } from './audit.js'
 import { CAN, orgOf } from './auth/context.js'
 import type { Db } from './db.js'
-import { forbidden } from './errors.js'
+import { forbidden, notFound } from './errors.js'
 import { importClient, type ContractInput } from './invoicing/clients.js'
 
 export const FIXTURES_DIR = resolve(import.meta.dirname, '../../../fixtures')
@@ -32,10 +32,19 @@ export async function demoRoutes(app: FastifyInstance): Promise<void> {
     audit(db, { orgId: org.id, userId: request.user!.id }, 'demo.loaded', 'organization', org.id)
     return { ok: true }
   })
+  const reportNames = () => readdirSync(join(FIXTURES_DIR, 'reports')).filter(n => /\.(pdf|xlsx|csv)$/.test(n)).sort()
   app.get('/reports', async (request) => {
     orgOf(request)
     if (!config.demoMode) throw forbidden('Disponible uniquement en mode démonstration.')
-    const { readdirSync } = await import('node:fs')
-    return { reports: readdirSync(join(FIXTURES_DIR, 'reports')).sort() }
+    return { reports: reportNames() }
+  })
+  app.get('/reports/:name', async (request, reply) => {
+    orgOf(request)
+    if (!config.demoMode) throw forbidden('Disponible uniquement en mode démonstration.')
+    const { name } = request.params as { name: string }
+    // Exact match against the directory listing: no path from the request reaches the filesystem.
+    const match = reportNames().find(n => n === name)
+    if (!match) throw notFound('Rapport')
+    return reply.header('content-type', 'application/octet-stream').header('content-disposition', 'attachment').send(readFileSync(join(FIXTURES_DIR, 'reports', match)))
   })
 }
