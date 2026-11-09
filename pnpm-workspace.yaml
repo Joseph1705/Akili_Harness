@@ -1,4 +1,6 @@
 packages:
   - plugins/*
+  - apps/*
 allowBuilds:
   esbuild: true
+  sharp: true

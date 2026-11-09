@@ -1,0 +1,28 @@
+{
+  "name": "@akili/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --import tsx src/main.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fastify/cookie": "11.0.2",
+    "@fastify/helmet": "13.0.2",
+    "@fastify/multipart": "9.2.1",
+    "@fastify/static": "8.2.0",
+    "exceljs": "4.4.0",
+    "fastify": "5.6.1",
+    "pdfkit": "0.17.2",
+    "sharp": "0.34.4",
+    "tsx": "4.20.6",
+    "unpdf": "1.3.2",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "@types/pdfkit": "0.17.3",
+    "vitest": "4.1.11"
+  }
+}

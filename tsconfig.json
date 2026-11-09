@@ -7,8 +7,13 @@
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": false,
     "skipLibCheck": true,
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "noEmit": true
   },
-  "include": ["plugins/**/*.ts"]
+  "include": [
+    "plugins/**/*.ts",
+    "apps/server/**/*.ts"
+  ]
 }
