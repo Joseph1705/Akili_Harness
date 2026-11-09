@@ -11,6 +11,7 @@ import { documentRoutes } from './documents/routes.js'
 import { invoiceRoutes } from './invoicing/routes.js'
 import { demoRoutes } from './demo.js'
 import { clientRoutes } from './invoicing/client-routes.js'
+import { sessionRoutes } from './sessions/routes.js'
 
 const UNSAFE = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 
@@ -42,4 +43,5 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   await app.register(invoiceRoutes, { prefix: '/invoices' })
   await app.register(clientRoutes, { prefix: '/clients' })
   await app.register(demoRoutes, { prefix: '/demo' })
+  await app.register(sessionRoutes)
 }
