@@ -55,3 +55,31 @@ export function as(t: TestContext, cookie: string) {
   return (method: 'GET' | 'POST' | 'PATCH' | 'DELETE' | 'PUT', url: string, payload?: unknown, headers: Record<string, string> = {}) =>
     t.app.inject({ method, url, headers: { origin: ORIGIN, cookie, ...headers }, ...(payload === undefined ? {} : { payload: payload as object }) })
 }
+
+/** Build a multipart/form-data body for inject(). */
+export function multipart(fields: Record<string, string>, file?: { field: string; filename: string; bytes: Buffer; type?: string }) {
+  const boundary = `----akili${Math.random().toString(16).slice(2)}`
+  const parts: Buffer[] = []
+  for (const [name, value] of Object.entries(fields)) {
+    parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`))
+  }
+  if (file) {
+    parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${file.field}"; filename="${file.filename}"\r\nContent-Type: ${file.type ?? 'application/octet-stream'}\r\n\r\n`))
+    parts.push(file.bytes, Buffer.from('\r\n'))
+  }
+  parts.push(Buffer.from(`--${boundary}--\r\n`))
+  return { payload: Buffer.concat(parts), headers: { 'content-type': `multipart/form-data; boundary=${boundary}` } }
+}
+
+/** Log in and create a company organization with finished onboarding. */
+export async function onboardedOwner(t: TestContext, email: string, name = 'Kibala Services SARL (fictif)'): Promise<{ cookie: string; orgId: string; call: ReturnType<typeof as> }> {
+  const cookie = await login(t, email)
+  const call = as(t, cookie)
+  const res = await call('POST', '/api/orgs', { kind: 'company', name })
+  if (res.statusCode !== 200) throw new Error(`create org ${res.statusCode} ${res.body}`)
+  await call('POST', '/api/orgs/current/consents', { type: 'terms', granted: true })
+  await call('POST', '/api/orgs/current/consents', { type: 'privacy', granted: true })
+  const done = await call('POST', '/api/orgs/current/onboarding/complete', {})
+  if (done.statusCode !== 200) throw new Error(`complete ${done.statusCode} ${done.body}`)
+  return { cookie, orgId: res.json().org.id, call }
+}

@@ -4,6 +4,7 @@ import { forbidden } from './errors.js'
 import { authRoutes } from './auth/routes.js'
 import { resolveSession, SESSION_COOKIE } from './auth/sessions.js'
 import { auditRoutes } from './audit.js'
+import { orgRoutes } from './orgs/routes.js'
 
 const UNSAFE = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 
@@ -28,4 +29,5 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   await app.register(authRoutes, { prefix: '/auth' })
   await app.register(auditRoutes, { prefix: '/audit' })
+  await app.register(orgRoutes)
 }
