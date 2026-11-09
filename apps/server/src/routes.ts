@@ -1,6 +1,31 @@
-/** All API routes, mounted under /api. Each module owns its prefix. */
+/** All API routes, mounted under /api: origin check, session resolution, then each module under its prefix. */
 import type { FastifyInstance } from 'fastify'
+import { forbidden } from './errors.js'
+import { authRoutes } from './auth/routes.js'
+import { resolveSession, SESSION_COOKIE } from './auth/sessions.js'
+import { auditRoutes } from './audit.js'
 
-export async function registerRoutes(_app: FastifyInstance): Promise<void> {
-  // Route modules are added task by task.
+const UNSAFE = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
+
+export async function registerRoutes(app: FastifyInstance): Promise<void> {
+  const { db, config } = app.deps
+
+  // Cross-site request forgery: a state-changing request must come from our own origin.
+  app.addHook('onRequest', async (request) => {
+    if (UNSAFE.has(request.method) && request.headers.origin !== config.publicOrigin) {
+      throw forbidden('Requête refusée (origine non autorisée).')
+    }
+    const token = request.cookies[SESSION_COOKIE]
+    if (token) {
+      const session = resolveSession(db, config, token)
+      if (session) {
+        request.user = session.user
+        request.sessionId = session.sessionId
+        request.org = session.org
+      }
+    }
+  })
+
+  await app.register(authRoutes, { prefix: '/auth' })
+  await app.register(auditRoutes, { prefix: '/audit' })
 }

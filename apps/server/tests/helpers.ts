@@ -38,3 +38,20 @@ export async function createTestApp(overrides: Record<string, string> = {}): Pro
     },
   }
 }
+
+/** Request a code and log in; returns the session cookie header value. */
+export async function login(t: TestContext, email: string): Promise<string> {
+  const req = await t.app.inject({ method: 'POST', url: '/api/auth/request-code', headers: { origin: ORIGIN }, payload: { email } })
+  if (req.statusCode !== 200) throw new Error(`request-code ${req.statusCode} ${req.body}`)
+  const code = req.json().demoCode as string
+  const res = await t.app.inject({ method: 'POST', url: '/api/auth/verify', headers: { origin: ORIGIN }, payload: { email, code } })
+  if (res.statusCode !== 200) throw new Error(`verify ${res.statusCode} ${res.body}`)
+  const cookie = String(res.headers['set-cookie']).split(';')[0]!
+  return cookie
+}
+
+/** inject() with the session cookie and the browser Origin header. */
+export function as(t: TestContext, cookie: string) {
+  return (method: 'GET' | 'POST' | 'PATCH' | 'DELETE' | 'PUT', url: string, payload?: unknown, headers: Record<string, string> = {}) =>
+    t.app.inject({ method, url, headers: { origin: ORIGIN, cookie, ...headers }, ...(payload === undefined ? {} : { payload: payload as object }) })
+}
