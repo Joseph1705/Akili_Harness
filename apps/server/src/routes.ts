@@ -6,6 +6,11 @@ import { resolveSession, SESSION_COOKIE } from './auth/sessions.js'
 import { auditRoutes } from './audit.js'
 import { orgRoutes } from './orgs/routes.js'
 import { creditRoutes } from './credits.js'
+import { agentRoutes } from './agents/routes.js'
+import { documentRoutes } from './documents/routes.js'
+import { invoiceRoutes } from './invoicing/routes.js'
+import { demoRoutes } from './demo.js'
+import { clientRoutes } from './invoicing/client-routes.js'
 
 const UNSAFE = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 
@@ -32,4 +37,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   await app.register(auditRoutes, { prefix: '/audit' })
   await app.register(orgRoutes)
   await app.register(creditRoutes, { prefix: '/credits' })
+  await app.register(agentRoutes)
+  await app.register(documentRoutes, { prefix: '/documents' })
+  await app.register(invoiceRoutes, { prefix: '/invoices' })
+  await app.register(clientRoutes, { prefix: '/clients' })
+  await app.register(demoRoutes, { prefix: '/demo' })
 }

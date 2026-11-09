@@ -100,6 +100,12 @@ const MIGRATIONS: string[] = [
     role TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL
   );
   `,
+  `
+  CREATE TABLE document_sessions (
+    document_id TEXT PRIMARY KEY REFERENCES documents(id), org_id TEXT NOT NULL, session_id TEXT NOT NULL REFERENCES chat_sessions(id)
+  );
+  CREATE INDEX documents_hash ON blobs(org_id, sha256);
+  `,
 ]
 
 export function migrate(db: DatabaseSync): void {

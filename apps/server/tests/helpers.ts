@@ -2,6 +2,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { expect } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { buildApp } from '../src/app.js'
 import { loadConfig, type Config } from '../src/config.js'
@@ -83,3 +85,19 @@ export async function onboardedOwner(t: TestContext, email: string, name = 'Kiba
   if (done.statusCode !== 200) throw new Error(`complete ${done.statusCode} ${done.body}`)
   return { cookie, orgId: res.json().org.id, call }
 }
+
+const reportsDir = join(import.meta.dirname, '../../../fixtures/reports')
+
+/** Owner with demo contracts, credits and an invoicing agent; `upload(name)` sends a fixture report. */
+export async function readyOrg(ctx: TestContext, email = 'owner@example.cd', credits = 20) {
+  const owner = await onboardedOwner(ctx, email)
+  expect((await owner.call('POST', '/api/demo/load', {})).statusCode).toBe(200)
+  if (credits > 0) await owner.call('POST', '/api/credits/topup', { credits, ref: 'FICTIF-PAY' })
+  const agent = (await owner.call('POST', '/api/agents', { packId: 'facturation-sous-traitance', name: 'Agent Facturation' })).json().agent
+  const upload = async (name: string) => {
+    const body = multipart({ agentId: agent.id }, { field: 'file', filename: name, bytes: readFileSync(join(reportsDir, name)) })
+    return ctx.app.inject({ method: 'POST', url: '/api/documents', headers: { origin: ORIGIN, cookie: owner.cookie, ...body.headers }, payload: body.payload })
+  }
+  return { ...owner, agent, upload }
+}
+
