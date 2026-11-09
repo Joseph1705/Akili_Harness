@@ -470,3 +470,9 @@ _À remplir par Claude Code à la fin de chaque session : date, ce qui a été f
 - **Écarts signalés :** Node ≥ 24.9 exigé par dsh (la directive dit 22.19) ; dsh envoie par défaut des métadonnées et de la télémétrie à DeepSeek (désactivées, ADR 004).
 - **Risques :** pas de pseudonymisation avant la phase 3 (l'offre Entreprise envoie les documents en clair à Anthropic) ; prix DeepSeek non vérifiés ; aucun appel réel testé (pas de clés).
 - **Prochaine étape :** validation des ADR, clés API de test, premier appel réel par offre, puis phase 0 restante et phase 2 (pack `mining-reports`).
+
+### 2026-11-09 (soir) — application de démonstration
+- **Fait :** `apps/server` (connexion par code, sessions, rôles, onboarding, logo nettoyé, consentements, journal d'audit, fichiers chiffrés par organisation, crédits 1 crédit = 1 document, extraction PDF/XLSX/CSV, contrôles, factures, validation idempotente, PDF « Document non fiscal ») et `apps/web` (les 6 écrans du design, clair et sombre). 65 tests serveur, parcours navigateur vérifié. `pnpm demo` lance tout.
+- **Décisions :** ADR 005 ; règles notées dans le plan (numérotation à la validation, « Valider la facture » au lieu de « Valider et envoyer », libellé d'hébergement réel).
+- **Risques :** démo sur données fictives ; pas d'envoi e-mail ni mobile money ; i18n partielle ; fichiers XLSX très compressés non bornés ; assistant libre non branché.
+- **Prochaine étape :** clés API pour l'assistant via dsh, vrais formats de rapports du client 1, connecteur e-mail.
