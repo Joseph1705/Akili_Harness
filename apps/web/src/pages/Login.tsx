@@ -8,7 +8,6 @@ export function Login() {
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
   const [step, setStep] = useState<'email' | 'code'>('email')
-  const [demoCode, setDemoCode] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -16,8 +15,7 @@ export function Login() {
     e.preventDefault()
     setError(''); setBusy(true)
     try {
-      const r = await api.post<{ demoCode?: string }>('/api/auth/request-code', { email })
-      setDemoCode(r.demoCode ?? null)
+      await api.post('/api/auth/request-code', { email })
       setStep('code')
     } catch (err) { setError(err instanceof ApiError ? err.message : 'Erreur.') } finally { setBusy(false) }
   }
@@ -54,8 +52,7 @@ export function Login() {
           </form>
         ) : (
           <form className="stack" onSubmit={verify}>
-            <p style={{ margin: 0 }}>Code envoyé à <b>{email}</b>.</p>
-            {demoCode && <div className="demo-banner"><b>Mode démonstration</b> — aucun e-mail n'est envoyé. Votre code : <span className="mono" style={{ fontSize: 16, fontWeight: 600 }}>{demoCode}</span></div>}
+            <p style={{ margin: 0 }}>Code envoyé à <b>{email}</b>. Pensez à regarder dans les courriers indésirables.</p>
             <div className="field">
               <label htmlFor="code">Code à 6 chiffres</label>
               <input id="code" className="input mono" inputMode="numeric" autoComplete="one-time-code" pattern="\d{6}" maxLength={6} required value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))} autoFocus style={{ letterSpacing: '.4em', fontSize: 20, height: 48 }} />

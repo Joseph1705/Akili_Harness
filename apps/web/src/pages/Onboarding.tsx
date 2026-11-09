@@ -64,12 +64,7 @@ export function Onboarding() {
     next()
   })
 
-  const finish = (withDemo: boolean) => run(async () => {
-    if (withDemo) {
-      await api.post('/api/demo/load')
-      await api.post('/api/credits/topup', { credits: 25, ref: 'DEMO-OFFERT' })
-      await api.post('/api/agents', { packId: 'facturation-sous-traitance', name: 'Agent Facturation' })
-    }
+  const finish = () => run(async () => {
     await api.post('/api/orgs/current/onboarding/complete')
     await refresh()
     toast('Votre espace est prêt.')
@@ -100,7 +95,7 @@ export function Onboarding() {
               <b>Je suis un indépendant ou un particulier</b><span className="small muted">Offre Entrepreneur individuel · agents sur DeepSeek</span>
             </button>
           </div>
-          {kind === 'company' && <div className="field"><label htmlFor="name">Nom de l'entreprise (raison sociale)</label><input id="name" className="input" value={form.name ?? ''} onChange={set('name')} placeholder="Kibala Services SARL" /></div>}
+          {kind === 'company' && <div className="field"><label htmlFor="name">Nom de l'entreprise (raison sociale)</label><input id="name" className="input" value={form.name ?? ''} onChange={set('name')} placeholder="Raison sociale" /></div>}
         </>)}
 
         {step === 'profile' && (<>
@@ -179,13 +174,12 @@ export function Onboarding() {
         {step === 'done' && (<>
           <h1>Premiers pas</h1>
           <ol className="stack" style={{ margin: 0, paddingLeft: 20 }}>
+            <li>Ajoutez vos clients et leurs contrats (grilles tarifaires) dans Paramètres › Clients et contrats.</li>
             <li>Créez un agent depuis « Packs d'agents » (pack Facturation).</li>
-            <li>Déposez vos rapports d'activité : l'agent prépare les factures.</li>
+            <li>Déposez vos rapports d'activité : l'agent prépare les factures selon vos contrats.</li>
             <li>Vérifiez et validez chaque facture. Rien n'est envoyé sans vous.</li>
           </ol>
-          {me?.app.demoMode && (
-            <div className="demo-banner"><b>Mode démonstration.</b> Chargez des données fictives : 3 clients miniers et leurs contrats, 25 crédits offerts, un agent Facturation prêt à l'emploi.</div>
-          )}
+          <p className="muted small" style={{ margin: 0 }}>Des crédits de bienvenue sont ajoutés à votre compte : 1 crédit = 1 rapport transformé en facture.</p>
         </>)}
 
         {error && <div className="error-text" role="alert">{error}</div>}
@@ -193,10 +187,9 @@ export function Onboarding() {
           {index > 0 && step !== 'done' && !(step === 'profile' && org) ? <button className="btn ghost" onClick={back}>Retour</button> : <span />}
           <div className="row">
             {['company', 'tax', 'tools', 'team'].includes(step) && <button className="btn ghost" onClick={next}>Passer</button>}
-            {step === 'done' ? (<>
-              {me?.app.demoMode && <button className="btn primary" disabled={busy} onClick={() => finish(true)}>Charger la démonstration et commencer</button>}
-              <button className={`btn${me?.app.demoMode ? '' : ' primary'}`} disabled={busy} onClick={() => finish(false)}>Commencer</button>
-            </>) : (
+            {step === 'done' ? (
+              <button className="btn primary" disabled={busy} onClick={finish}>Commencer</button>
+            ) : (
               <button className="btn primary" disabled={busy} onClick={save}>{busy ? <span className="spinner" /> : 'Continuer'}</button>
             )}
           </div>

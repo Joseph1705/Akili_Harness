@@ -35,7 +35,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
   })
 
-  app.get('/public/config', async () => ({ brand: config.brand, hostingLabel: config.hostingLabel, version: APP_VERSION }))
+  app.get('/public/config', async () => ({ brand: config.brand, hostingLabel: config.hostingLabel, supportEmail: config.supportEmail ?? null, version: APP_VERSION }))
   await app.register(authRoutes, { prefix: '/auth' })
   await app.register(auditRoutes, { prefix: '/audit' })
   await app.register(orgRoutes)

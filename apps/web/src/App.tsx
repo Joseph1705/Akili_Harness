@@ -11,6 +11,7 @@ import { Packs } from './pages/Packs'
 import { Credits } from './pages/Credits'
 import { Settings } from './pages/Settings'
 import { About } from './pages/About'
+import { Platform } from './pages/Platform'
 
 export function App() {
   const { me, loading } = useSession()
@@ -28,6 +29,7 @@ export function App() {
       <Route path="/credits" element={<Credits />} />
       <Route path="/parametres" element={<Settings />} />
       <Route path="/a-propos" element={<About />} />
+      {me.platformAdmin && <Route path="/administration" element={<Platform />} />}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

@@ -14,10 +14,11 @@ export interface Me {
     onboarding_step: number; onboarding_done_at: string | null
   }
   orgs: Array<{ id: string; name: string; plan: string; role: Role }>
-  app: { brand: string; demoMode: boolean; hostingLabel: string; models: { deepseek: boolean; anthropic: boolean } }
+  platformAdmin: boolean
+  app: { brand: string; hostingLabel: string; models: { deepseek: boolean; anthropic: boolean } }
 }
 
-export interface PublicConfig { brand: string; hostingLabel: string; demoMode: boolean; version: string }
+export interface PublicConfig { brand: string; hostingLabel: string; supportEmail: string | null; version: string }
 
 interface Session {
   me: Me | null

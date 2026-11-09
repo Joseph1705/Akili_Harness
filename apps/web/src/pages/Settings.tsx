@@ -128,20 +128,106 @@ function Team() {
   )
 }
 
+interface Rate { code: string; label: string; unit: string; unit_price: string; max_qty?: string }
+interface Contract { id: string; reference: string; po_number: string; payment_terms_days: number; currency: 'USD' | 'CDF'; rates: Rate[] }
+interface ClientRow { id: string; name: string; address: string | null; nif: string | null; rccm: string | null; email: string | null; vat_applicable: boolean; contracts: Contract[] }
+
+const emptyContract = (): Omit<Contract, 'id'> => ({ reference: '', po_number: '', payment_terms_days: 30, currency: 'USD', rates: [{ code: '', label: '', unit: '', unit_price: '', max_qty: '' }] })
+
 function Clients() {
-  const [clients, setClients] = useState<Array<{ id: string; name: string; nif: string | null; email: string | null; vat_applicable: number; contracts: Array<{ id: string; reference: string; po_number: string; payment_terms_days: number; currency: string; rates: Array<{ code: string; label: string; unit: string; unit_price: string; max_qty?: string }> }> }> | null>(null)
-  useEffect(() => { void api.get<{ clients: NonNullable<typeof clients> }>('/api/clients').then(r => setClients(r.clients)) }, [])
+  const { me } = useSession()
+  const admin = can.configure(me?.org?.role)
+  const [clients, setClients] = useState<ClientRow[] | null>(null)
+  const [newClient, setNewClient] = useState<{ name: string; nif: string; rccm: string; email: string; address: string; vat_applicable: boolean } | null>(null)
+  const [editing, setEditing] = useState<{ clientId: string; contractId?: string; data: Omit<Contract, 'id'> } | null>(null)
+  const { busy, run } = useRun()
+  const load = () => api.get<{ clients: ClientRow[] }>('/api/clients').then(r => setClients(r.clients))
+  useEffect(() => { void load() }, [])
+
+  const saveClient = () => run(async () => {
+    const c = newClient!
+    await api.post('/api/clients', { name: c.name, nif: c.nif || null, rccm: c.rccm || null, email: c.email || null, address: c.address || null, vat_applicable: c.vat_applicable })
+    setNewClient(null); await load()
+  }, 'Client ajouté.')
+
+  const saveContract = () => run(async () => {
+    const e = editing!
+    const body = { ...e.data, rates: e.data.rates.map(r => ({ ...r, unit_price: r.unit_price.replace(',', '.'), max_qty: r.max_qty ? r.max_qty.replace(',', '.') : undefined })) }
+    if (e.contractId) await api.put(`/api/contracts/${e.contractId}`, body)
+    else await api.post(`/api/clients/${e.clientId}/contracts`, body)
+    setEditing(null); await load()
+  }, 'Contrat enregistré.')
+
   if (!clients) return <div className="empty"><span className="spinner" /></div>
-  if (clients.length === 0) return <div className="card empty">Aucun client. Les contrats et grilles tarifaires servent à calculer les factures.</div>
   return (
     <div className="stack">
-      {clients.map(c => c.contracts.map(k => (
-        <div className="card" key={k.id}>
-          <div className="card-head"><div><b>{c.name}</b> <span className="small muted">· NIF {c.nif ?? '—'} · {c.vat_applicable ? 'TVA applicable' : 'TVA non applicable'}</span></div><span className="small mono">{k.reference} · {k.po_number} · {k.payment_terms_days} j</span></div>
-          <table className="table"><thead><tr><th>Code</th><th>Prestation</th><th>Unité</th><th className="right">Prix unitaire</th><th className="right">Plafond</th></tr></thead>
-            <tbody>{k.rates.map(r => <tr key={r.code}><td className="mono small">{r.code}</td><td>{r.label}</td><td className="small">{r.unit}</td><td className="right mono">{money(Math.round(Number(r.unit_price) * 100), k.currency)}</td><td className="right mono small">{r.max_qty ?? '—'}</td></tr>)}</tbody></table>
+      <p className="muted" style={{ margin: 0, maxWidth: 760 }}>Chaque facture est calculée à partir du contrat dont le bon de commande figure sur le rapport. Les prix viennent uniquement d'ici, jamais du document.</p>
+      {admin && !newClient && <div><button className="btn primary" onClick={() => setNewClient({ name: '', nif: '', rccm: '', email: '', address: '', vat_applicable: true })}><Icon name="plus" size={15} /> Nouveau client</button></div>}
+      {newClient && (
+        <div className="card card-pad stack" style={{ maxWidth: 820 }}>
+          <b>Nouveau client</b>
+          <div className="form-grid">
+            <div className="field full"><label>Raison sociale</label><input className="input" value={newClient.name} onChange={e => setNewClient({ ...newClient, name: e.target.value })} /></div>
+            <div className="field"><label>NIF</label><input className="input mono" value={newClient.nif} onChange={e => setNewClient({ ...newClient, nif: e.target.value })} /></div>
+            <div className="field"><label>RCCM</label><input className="input mono" value={newClient.rccm} onChange={e => setNewClient({ ...newClient, rccm: e.target.value })} /></div>
+            <div className="field"><label>E-mail de facturation</label><input className="input" type="email" value={newClient.email} onChange={e => setNewClient({ ...newClient, email: e.target.value })} /></div>
+            <div className="field"><label>TVA</label><select className="input" value={newClient.vat_applicable ? 'yes' : 'no'} onChange={e => setNewClient({ ...newClient, vat_applicable: e.target.value === 'yes' })}><option value="yes">Applicable</option><option value="no">Non applicable (exonéré)</option></select></div>
+            <div className="field full"><label>Adresse</label><input className="input" value={newClient.address} onChange={e => setNewClient({ ...newClient, address: e.target.value })} /></div>
+          </div>
+          <div className="row"><button className="btn primary" disabled={busy || newClient.name.trim().length < 2} onClick={saveClient}>Enregistrer</button><button className="btn" onClick={() => setNewClient(null)}>Annuler</button></div>
         </div>
-      )))}
+      )}
+      {clients.length === 0 && !newClient && <div className="card empty">Aucun client pour l'instant.</div>}
+      {clients.map(c => (
+        <div className="card" key={c.id}>
+          <div className="card-head">
+            <div><b>{c.name}</b> <span className="small muted">· NIF {c.nif ?? '—'} · {c.vat_applicable ? 'TVA applicable' : 'TVA non applicable'}{c.email ? ` · ${c.email}` : ''}</span></div>
+            {admin && <button className="btn small" onClick={() => setEditing({ clientId: c.id, data: emptyContract() })}><Icon name="plus" size={14} /> Contrat</button>}
+          </div>
+          {editing?.clientId === c.id && !editing.contractId && <ContractEditor value={editing.data} busy={busy} onChange={data => setEditing({ ...editing, data })} onSave={saveContract} onCancel={() => setEditing(null)} />}
+          {c.contracts.length === 0 && editing?.clientId !== c.id && <div className="empty small">Aucun contrat : les rapports de ce client ne peuvent pas encore être facturés.</div>}
+          {c.contracts.map(k => editing?.contractId === k.id
+            ? <ContractEditor key={k.id} value={editing.data} busy={busy} onChange={data => setEditing({ ...editing, data })} onSave={saveContract} onCancel={() => setEditing(null)} />
+            : (
+              <div key={k.id} style={{ borderTop: '1px solid var(--line)' }}>
+                <div className="spread" style={{ padding: '10px 20px' }}>
+                  <span className="small mono">{k.reference} · BC {k.po_number} · {k.payment_terms_days} j · {k.currency}</span>
+                  {admin && <button className="btn small ghost" onClick={() => setEditing({ clientId: c.id, contractId: k.id, data: { reference: k.reference, po_number: k.po_number, payment_terms_days: k.payment_terms_days, currency: k.currency, rates: k.rates.map(r => ({ ...r, max_qty: r.max_qty ?? '' })) } })}>Modifier</button>}
+                </div>
+                <table className="table"><thead><tr><th>Code</th><th>Prestation</th><th>Unité</th><th className="right">Prix unitaire</th><th className="right">Plafond</th></tr></thead>
+                  <tbody>{k.rates.map(r => <tr key={r.code}><td className="mono small">{r.code}</td><td>{r.label}</td><td className="small">{r.unit}</td><td className="right mono">{money(Math.round(Number(r.unit_price) * 100), k.currency)}</td><td className="right mono small">{r.max_qty ?? '—'}</td></tr>)}</tbody></table>
+              </div>
+            ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ContractEditor({ value, onChange, onSave, onCancel, busy }: { value: Omit<Contract, 'id'>; onChange: (v: Omit<Contract, 'id'>) => void; onSave: () => void; onCancel: () => void; busy: boolean }) {
+  const setRate = (i: number, patch: Partial<Rate>) => onChange({ ...value, rates: value.rates.map((r, j) => (j === i ? { ...r, ...patch } : r)) })
+  return (
+    <div className="card-pad stack" style={{ borderTop: '1px solid var(--line)', background: 'var(--surface-2)' }}>
+      <div className="form-grid">
+        <div className="field"><label>Référence du contrat</label><input className="input mono" value={value.reference} onChange={e => onChange({ ...value, reference: e.target.value })} placeholder="CT-2026-01" /></div>
+        <div className="field"><label>N° de bon de commande</label><input className="input mono" value={value.po_number} onChange={e => onChange({ ...value, po_number: e.target.value })} placeholder="BC-0932" /></div>
+        <div className="field"><label>Délai de paiement (jours)</label><input className="input mono" inputMode="numeric" value={String(value.payment_terms_days)} onChange={e => onChange({ ...value, payment_terms_days: Number(e.target.value.replace(/\D/g, '') || 0) })} /></div>
+        <div className="field"><label>Devise</label><select className="input" value={value.currency} onChange={e => onChange({ ...value, currency: e.target.value as 'USD' | 'CDF' })}><option>USD</option><option>CDF</option></select></div>
+      </div>
+      <b className="small">Grille tarifaire</b>
+      {value.rates.map((r, i) => (
+        <div key={i} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 100px 120px 100px 36px', gap: 8 }}>
+          <input className="input mono" aria-label="Code" placeholder="GRU-25" value={r.code} onChange={e => setRate(i, { code: e.target.value.toUpperCase() })} />
+          <input className="input" aria-label="Prestation" placeholder="Location grue 25 t" value={r.label} onChange={e => setRate(i, { label: e.target.value })} />
+          <input className="input" aria-label="Unité" placeholder="jour" value={r.unit} onChange={e => setRate(i, { unit: e.target.value })} />
+          <input className="input mono" aria-label="Prix unitaire" placeholder="640.00" value={r.unit_price} onChange={e => setRate(i, { unit_price: e.target.value })} />
+          <input className="input mono" aria-label="Plafond" placeholder="Plafond" value={r.max_qty ?? ''} onChange={e => setRate(i, { max_qty: e.target.value })} />
+          <button className="btn small ghost" aria-label="Retirer la ligne" disabled={value.rates.length === 1} onClick={() => onChange({ ...value, rates: value.rates.filter((_, j) => j !== i) })}><Icon name="x" size={14} /></button>
+        </div>
+      ))}
+      <div><button className="btn small" onClick={() => onChange({ ...value, rates: [...value.rates, { code: '', label: '', unit: '', unit_price: '', max_qty: '' }] })}><Icon name="plus" size={14} /> Ligne</button></div>
+      <span className="hint">Codes : ceux qui figurent sur les rapports d'activité. Prix avec un point (640.00). Plafond facultatif : quantité maximale par rapport.</span>
+      <div className="row"><button className="btn primary" disabled={busy || !value.reference || !value.po_number} onClick={onSave}>Enregistrer le contrat</button><button className="btn" onClick={onCancel}>Annuler</button></div>
     </div>
   )
 }
@@ -175,7 +261,8 @@ const ACTIONS: Record<string, string> = {
   'consent.recorded': 'Consentement enregistré', 'member.invited': 'Membre invité', 'credits.topup': 'Recharge de crédits', 'agent.created': 'Agent créé',
   'agent.updated': 'Agent modifié', 'agent.tested': 'Agent testé', 'document.uploaded': 'Rapport déposé', 'document.downloaded': 'Rapport téléchargé',
   'invoice.drafted': 'Projet de facture préparé', 'invoice.validated': 'Facture validée', 'invoice.rejected': 'Facture rejetée', 'invoice.corrected': 'Facture corrigée',
-  'invoice.pdf_downloaded': 'PDF téléchargé', 'demo.loaded': 'Données de démonstration chargées', 'auth.session_revoked': 'Appareil déconnecté',
+  'invoice.pdf_downloaded': 'PDF téléchargé', 'auth.session_revoked': 'Appareil déconnecté',
+  'client.created': 'Client ajouté', 'client.updated': 'Client modifié', 'contract.created': 'Contrat ajouté', 'contract.updated': 'Contrat modifié',
 }
 
 function Audit() {

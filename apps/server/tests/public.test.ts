@@ -6,9 +6,9 @@ afterEach(async () => { await t?.close(); t = undefined })
 
 describe('public config', () => {
   it('tells the login page the brand and hosting, without a session', async () => {
-    t = await createTestApp({ AKILI_BRAND_NAME: 'Akili', AKILI_HOSTING_LABEL: 'Hébergé en France' })
+    t = await createTestApp({ AKILI_BRAND_NAME: 'Akili', AKILI_HOSTING_LABEL: 'Hébergé en France', AKILI_SUPPORT_EMAIL: 'josephprods@gmail.com' })
     const res = await t.app.inject({ method: 'GET', url: '/api/public/config' })
-    expect(res.json()).toEqual({ brand: 'Akili', hostingLabel: 'Hébergé en France', version: expect.any(String) })
+    expect(res.json()).toEqual({ brand: 'Akili', hostingLabel: 'Hébergé en France', supportEmail: 'josephprods@gmail.com', version: expect.any(String) })
   })
 
   it('reports health only when the database answers', async () => {

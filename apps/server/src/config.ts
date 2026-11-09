@@ -34,6 +34,8 @@ export interface Config {
   smtp: SmtpConfig | undefined
   /** E-mail addresses of the platform operators (us): they credit organizations until payment is integrated. */
   platformAdmins: string[]
+  /** Shown to organizations that need credits or help, until payment is integrated. */
+  supportEmail: string | undefined
   /** Credits given to each new organization. */
   signupCredits: number
   /** Built web interface to serve, when present. */
@@ -110,6 +112,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     smtp: readSmtp(env, production),
     platformAdmins: (env.AKILI_PLATFORM_ADMINS ?? '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean),
     signupCredits,
+    supportEmail: env.AKILI_SUPPORT_EMAIL?.trim() || undefined,
     webDist: env.AKILI_WEB_DIST,
     models: { deepseek: Boolean(env.DEEPSEEK_API_KEY), anthropic: Boolean(env.ANTHROPIC_API_KEY) },
   }

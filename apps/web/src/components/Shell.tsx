@@ -21,8 +21,7 @@ function useTheme(): [string, () => void] {
 }
 
 export function hostingBadge(label: string | undefined): string {
-  if (!label) return ''
-  return label.startsWith('Serveur local') ? 'Données stockées localement' : label
+  return label ?? ''
 }
 
 export function Shell({ crumb, title, actions, children }: { crumb: string; title: string; actions?: ReactNode; children: ReactNode }) {
@@ -79,6 +78,7 @@ export function Shell({ crumb, title, actions, children }: { crumb: string; titl
           <NavLink to="/credits"><Icon name="coin" /> Crédits</NavLink>
           <NavLink to="/parametres"><Icon name="gear" /> Paramètres</NavLink>
           <NavLink to="/a-propos"><Icon name="diamond" /> À propos</NavLink>
+          {me?.platformAdmin && <NavLink to="/administration"><Icon name="shield" /> Administration</NavLink>}
         </nav>
         <div className="host-box">
           <b>◆ {me?.app.hostingLabel}</b>

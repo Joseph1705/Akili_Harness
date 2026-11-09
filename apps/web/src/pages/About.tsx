@@ -16,7 +16,7 @@ export function About() {
         <div className="about">
           <div className="version-block">
             <img src="/brand/tete-ivoire.png" alt="" />
-            <div className="spread mono small"><span>Version {config?.version}</span><span>build 2026.11.09</span></div>
+            <div className="mono small">Version {config?.version}</div>
           </div>
           <div className="stack" style={{ gap: 18 }}>
             <div className="eyebrow" style={{ color: 'var(--green-ink)' }}>Agents IA souverains · Afrique centrale</div>

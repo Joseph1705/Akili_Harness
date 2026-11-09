@@ -218,6 +218,7 @@ textarea.input { height: auto; padding: 10px 12px; }
 .doc-table { width: 100%; border-collapse: collapse; font-family: var(--sans); font-size: 13.5px; background: var(--surface); border: 1px solid var(--line); }
 .doc-table th { text-align: left; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding: 8px 12px; border-bottom: 1px solid var(--line); }
 .doc-table td { padding: 9px 12px; border-top: 1px solid var(--line); vertical-align: middle; }
+.doc-table td.mono, .doc-table td.right { white-space: nowrap; }
 .composer { border-top: 1px solid var(--line); padding: 14px 40px 12px; background: var(--surface); }
 .composer-inner { max-width: 860px; margin: 0 auto; }
 .prompt { display: flex; align-items: center; gap: 10px; border: 1.5px solid var(--line-strong); background: var(--paper); padding: 6px 8px 6px 14px; }
@@ -301,7 +302,6 @@ textarea.input { height: auto; padding: 10px 12px; }
 .auth-card { width: 100%; max-width: 440px; padding: 34px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); }
 .auth-logo { display: flex; justify-content: center; margin-bottom: 18px; }
 .auth-logo img { height: 120px; }
-.demo-banner { border: 1.5px dashed var(--copper); padding: 10px 12px; font-size: 13px; background: var(--paper); color: #16211B; }
 .onb { width: 100%; max-width: 720px; }
 .onb-steps { display: flex; gap: 4px; margin-bottom: 18px; }
 .onb-steps span { flex: 1; height: 4px; background: var(--line); }
