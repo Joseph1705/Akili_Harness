@@ -40,7 +40,7 @@ export function buildDraft(report: ActivityReport, contract: Contract, client: C
     const qty = quantities[l.code] ?? l.qty
     return { code: l.code, label: l.label, unit: l.unit, qty, qty_milli: parseQty(qty), unit_cents: parseMoney(rate.unit_price), amount_cents: 0 }
   })
-  const vatApplies = client.vat_applicable === 1 && org.vat_status !== 'no'
+  const vatApplies = client.vat_applicable && org.vat_status !== 'no'
   const vatRateBp = vatApplies ? VAT_STANDARD_BP : 0
   const totals = computeInvoice(lines.map(l => ({ qtyMilli: l.qty_milli, unitCents: l.unit_cents })), vatRateBp)
   lines.forEach((l, i) => { l.amount_cents = totals.lineCents[i]! })
@@ -70,7 +70,7 @@ export function buildDraft(report: ActivityReport, contract: Contract, client: C
   // 5. VAT.
   checks.push(vatApplies
     ? { id: 'vat', status: org.vat_status === 'unknown' ? 'warning' : 'ok', title: 'TVA 16 % correctement appliquée', note: org.vat_status === 'unknown' ? `${formatMoney(totals.vatCents)} ${contract.currency} — confirmez que votre entreprise est assujettie à la TVA` : `${formatMoney(totals.vatCents)} ${contract.currency}` }
-    : { id: 'vat', status: 'info', title: 'TVA non appliquée', note: client.vat_applicable === 0 ? 'Client exonéré selon votre fiche client — à confirmer par votre expert-comptable' : 'Votre entreprise est déclarée non assujettie' })
+    : { id: 'vat', status: 'info', title: 'TVA non appliquée', note: !client.vat_applicable ? 'Client exonéré selon votre fiche client — à confirmer par votre expert-comptable' : 'Votre entreprise est déclarée non assujettie' })
 
   // 6. Payment term from the contract.
   checks.push({ id: 'due', status: 'ok', title: 'Échéance selon le contrat', note: `${contract.payment_terms_days} jours (contrat ${contract.reference})` })

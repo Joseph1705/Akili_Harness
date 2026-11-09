@@ -2,9 +2,8 @@
 import { randomUUID } from 'node:crypto'
 import type { Db } from '../src/db.js'
 
-export function createOrg(db: Db, name = 'Kibala Services SARL (fictif)', plan: 'solo' | 'entreprise' = 'entreprise'): string {
+export async function createOrg(db: Db, name = 'Kibala Services SARL (fictif)', plan: 'solo' | 'entreprise' = 'entreprise'): Promise<string> {
   const id = randomUUID()
-  db.prepare(`INSERT INTO organizations (id, kind, name, plan, created_at) VALUES (?, ?, ?, ?, ?)`)
-    .run(id, plan === 'solo' ? 'individual' : 'company', name, plan, new Date().toISOString())
+  await db.run('INSERT INTO organizations (id, kind, name, plan) VALUES (?, ?, ?, ?)', id, plan === 'solo' ? 'individual' : 'company', name, plan)
   return id
 }

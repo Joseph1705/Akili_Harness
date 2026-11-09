@@ -1,10 +1,11 @@
 /**
- * Background jobs stored in the database, so work survives a restart (directive 4.11: asynchronous
- * processing, immediate acknowledgement). One in-process worker polls; failures retry with backoff.
+ * Background jobs stored in PostgreSQL, so work survives a restart (directive 4.11: asynchronous
+ * processing, immediate acknowledgement). Workers claim jobs with SKIP LOCKED, so several app
+ * containers can run side by side without processing a job twice. Failures retry with backoff.
  */
 import type { FastifyInstance } from 'fastify'
 import { randomUUID } from 'node:crypto'
-import { now, type Db } from './db.js'
+import type { Db } from './db.js'
 import { processDocument } from './documents/process.js'
 
 export type JobOutcome = 'done' | 'waiting_credits'
@@ -15,47 +16,45 @@ const HANDLERS: Record<string, (app: FastifyInstance, orgId: string, refId: stri
 
 const MAX_ATTEMPTS = 3
 
-export function enqueue(db: Db, orgId: string, type: keyof typeof HANDLERS, refId: string): void {
-  db.prepare('INSERT INTO jobs (id, org_id, type, ref_id, run_after, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(randomUUID(), orgId, type, refId, now(), now())
+export async function enqueue(db: Db, orgId: string, type: keyof typeof HANDLERS, refId: string): Promise<void> {
+  await db.run('INSERT INTO jobs (id, org_id, type, ref_id) VALUES (?, ?, ?, ?)', randomUUID(), orgId, type, refId)
 }
 
 /** Run one pending job; false when there is none. */
 export async function runOneJob(app: FastifyInstance): Promise<boolean> {
   const { db } = app.deps
-  const job = db.tx(() => {
-    const row = db.prepare("SELECT * FROM jobs WHERE status = 'pending' AND run_after <= ? ORDER BY created_at LIMIT 1").get(now()) as
-      { id: string; org_id: string; type: string; ref_id: string; attempts: number } | undefined
-    if (row) db.prepare("UPDATE jobs SET status = 'running', attempts = attempts + 1 WHERE id = ?").run(row.id)
-    return row
-  })
+  const job = await db.get<{ id: string; org_id: string; type: string; ref_id: string; attempts: number }>(`UPDATE jobs SET status = 'running', attempts = attempts + 1
+    WHERE id = (SELECT id FROM jobs WHERE status = 'pending' AND run_after <= now() ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED)
+    RETURNING id, org_id, type, ref_id, attempts`)
   if (!job) return false
   try {
     const outcome = await HANDLERS[job.type]!(app, job.org_id, job.ref_id)
-    db.prepare('UPDATE jobs SET status = ? WHERE id = ?').run(outcome, job.id)
+    await db.run('UPDATE jobs SET status = ?, error = NULL WHERE id = ?', outcome, job.id)
   } catch (error) {
-    const attempts = job.attempts + 1
-    const failed = attempts >= MAX_ATTEMPTS
-    db.prepare('UPDATE jobs SET status = ?, error = ?, run_after = ? WHERE id = ?')
-      .run(failed ? 'failed' : 'pending', String(error).slice(0, 500), new Date(Date.now() + 2 ** attempts * 1000).toISOString(), job.id)
-    if (failed) app.log.error({ job: job.id, error: String(error) }, 'job failed')
+    const failed = job.attempts >= MAX_ATTEMPTS
+    await db.run(`UPDATE jobs SET status = ?, error = ?, run_after = now() + make_interval(secs => ?) WHERE id = ?`,
+      failed ? 'failed' : 'pending', String(error).slice(0, 500), 2 ** job.attempts, job.id)
+    if (failed) {
+      app.log.error({ job: job.id, error: String(error) }, 'job failed')
+      await db.run("UPDATE documents SET status = 'failed', error = 'Erreur interne pendant le traitement. Réessayez ou contactez le support.' WHERE id = ? AND org_id = ? AND status = 'processing'", job.ref_id, job.org_id)
+    }
   }
   return true
 }
 
-/** Tests and the demo seed: run until nothing is pending. */
+/** Tests: run until nothing is pending. */
 export async function drainJobs(app: FastifyInstance, limit = 200): Promise<void> {
   for (let i = 0; i < limit && await runOneJob(app); i++) { /* keep going */ }
 }
 
-export function startWorker(app: FastifyInstance, intervalMs = 400): { stop(): void } {
+export async function startWorker(app: FastifyInstance, intervalMs = 500): Promise<{ stop(): void }> {
+  // Jobs left "running" by a crash go back to the queue.
+  await app.deps.db.run("UPDATE jobs SET status = 'pending' WHERE status = 'running'")
   let running = false
   const timer = setInterval(async () => {
     if (running) return
     running = true
-    try { while (await runOneJob(app)) { /* drain */ } } finally { running = false }
+    try { while (await runOneJob(app)) { /* drain */ } } catch (error) { app.log.error({ error: String(error) }, 'worker loop') } finally { running = false }
   }, intervalMs)
-  // Jobs left "running" by a crash go back to the queue.
-  app.deps.db.prepare("UPDATE jobs SET status = 'pending' WHERE status = 'running'").run()
   return { stop: () => clearInterval(timer) }
 }

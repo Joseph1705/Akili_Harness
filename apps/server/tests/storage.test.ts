@@ -23,10 +23,10 @@ describe('encrypted blob storage', () => {
 
   it('round-trips bytes and never stores them in clear', async () => {
     t = await createTestApp()
-    const org = createOrg(t.db)
+    const org = await createOrg(t.db)
     const secret = Buffer.from('%PDF-1.7 Rapport confidentiel FICTIF 12345')
-    const blob = putBlob(t.db, t.config, org, secret, { filename: 'r.pdf', kind: 'pdf' })
-    expect(getBlob(t.db, t.config, org, blob.id).bytes.equals(secret)).toBe(true)
+    const blob = await putBlob(t.db, t.config, org, secret, { filename: 'r.pdf', kind: 'pdf' })
+    expect((await getBlob(t.db, t.config, org, blob.id)).bytes.equals(secret)).toBe(true)
     const files = findFiles(join(t.config.dataDir, 'blobs'))
     expect(files).toHaveLength(1)
     expect(readFileSync(files[0]!).includes(Buffer.from('confidentiel'))).toBe(false)
@@ -34,10 +34,10 @@ describe('encrypted blob storage', () => {
 
   it('refuses to read another organization blob', async () => {
     t = await createTestApp()
-    const a = createOrg(t.db, 'A')
-    const b = createOrg(t.db, 'B')
-    const blob = putBlob(t.db, t.config, a, Buffer.from('x'), { filename: 'x.csv', kind: 'csv' })
-    expect(() => getBlob(t!.db, t!.config, b, blob.id)).toThrow(/introuvable/)
+    const a = await createOrg(t.db, 'A')
+    const b = await createOrg(t.db, 'B')
+    const blob = await putBlob(t.db, t.config, a, Buffer.from('x'), { filename: 'x.csv', kind: 'csv' })
+    await expect(getBlob(t.db, t.config, b, blob.id)).rejects.toThrow(/introuvable/)
   })
 })
 

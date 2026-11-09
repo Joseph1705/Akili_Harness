@@ -1,6 +1,6 @@
 /** Agent packs (directive 6.1). Only the invoicing pack runs in this version; the others are announced. */
 import { randomUUID } from 'node:crypto'
-import { now, type Db } from '../db.js'
+import type { Db } from '../db.js'
 
 export interface Pack {
   id: string
@@ -31,8 +31,8 @@ export function packById(id: string): Pack | undefined {
   return PACKS.find(p => p.id === id)
 }
 
-export function createAgent(db: Db, orgId: string, packId: string, name: string, language: string): string {
+export async function createAgent(db: Db, orgId: string, packId: string, name: string, language: string): Promise<string> {
   const id = randomUUID()
-  db.prepare('INSERT INTO agents (id, org_id, pack_id, name, language, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(id, orgId, packId, name, language, now())
+  await db.run('INSERT INTO agents (id, org_id, pack_id, name, language) VALUES (?, ?, ?, ?, ?)', id, orgId, packId, name, language)
   return id
 }

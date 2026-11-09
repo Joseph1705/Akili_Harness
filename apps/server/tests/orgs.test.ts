@@ -31,6 +31,14 @@ describe('onboarding', () => {
     expect(me.org.onboarding_done_at).toBeTruthy()
   })
 
+  it('gives each new organization its welcome credits', async () => {
+    t = await createTestApp({ AKILI_SIGNUP_CREDITS: '10' })
+    const { call } = await onboardedOwner(t, 'a@example.cd')
+    const credits = (await call('GET', '/api/credits')).json()
+    expect(credits.balance).toBe(10)
+    expect(credits.entries[0]).toMatchObject({ kind: 'topup', ref: 'BIENVENUE' })
+  })
+
   it('gives an individual account the solo plan', async () => {
     t = await createTestApp()
     const call = as(t, await login(t, 'solo@example.cd'))
@@ -112,7 +120,7 @@ describe('roles and isolation', () => {
     const entries = (await a.call('GET', '/api/audit')).json().entries as Array<{ action: string }>
     expect(entries.map(e => e.action)).toContain('org.created')
     expect(entries.length).toBe(entries.filter(() => true).length)
-    const orgsSeen = new Set(t.db.prepare('SELECT DISTINCT org_id FROM audit_log WHERE org_id IS NOT NULL').all().map(r => (r as { org_id: string }).org_id))
+    const orgsSeen = new Set((await t.db.all<{ org_id: string }>('SELECT DISTINCT org_id FROM audit_log WHERE org_id IS NOT NULL')).map(r => r.org_id))
     expect(orgsSeen.size).toBe(2)
     expect(entries.every(e => JSON.stringify(e).includes('B SARL') === false)).toBe(true)
   })

@@ -84,7 +84,10 @@ export async function buildApp(input: AppDeps): Promise<FastifyInstance> {
     return reply.status(500).send({ error: 'internal', message: 'Erreur interne. Réessayez ou contactez le support.' })
   })
 
-  app.get('/api/health', async () => ({ ok: true }))
+  // Liveness for Docker and Caddy: also proves the database answers.
+  app.get('/api/health', async (_request, reply) => {
+    try { await deps.db.get('SELECT 1'); return { ok: true } } catch { return reply.status(503).send({ ok: false }) }
+  })
   await app.register(registerRoutes, { prefix: '/api' })
 
   const webDist = input.config.webDist

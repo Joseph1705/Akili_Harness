@@ -9,12 +9,12 @@ import { creditRoutes } from './credits.js'
 import { agentRoutes } from './agents/routes.js'
 import { documentRoutes } from './documents/routes.js'
 import { invoiceRoutes } from './invoicing/routes.js'
-import { demoRoutes } from './demo.js'
 import { clientRoutes } from './invoicing/client-routes.js'
 import { sessionRoutes } from './sessions/routes.js'
+import { platformRoutes } from './platform.js'
 
 const UNSAFE = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
-export const APP_VERSION = '0.1.0'
+export const APP_VERSION = '0.2.0'
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   const { db, config } = app.deps
@@ -26,7 +26,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
     const token = request.cookies[SESSION_COOKIE]
     if (token) {
-      const session = resolveSession(db, config, token)
+      const session = await resolveSession(db, config, token)
       if (session) {
         request.user = session.user
         request.sessionId = session.sessionId
@@ -35,7 +35,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
   })
 
-  app.get('/public/config', async () => ({ brand: config.brand, hostingLabel: config.hostingLabel, demoMode: config.demoMode, version: APP_VERSION }))
+  app.get('/public/config', async () => ({ brand: config.brand, hostingLabel: config.hostingLabel, version: APP_VERSION }))
   await app.register(authRoutes, { prefix: '/auth' })
   await app.register(auditRoutes, { prefix: '/audit' })
   await app.register(orgRoutes)
@@ -43,7 +43,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   await app.register(agentRoutes)
   await app.register(documentRoutes, { prefix: '/documents' })
   await app.register(invoiceRoutes, { prefix: '/invoices' })
-  await app.register(clientRoutes, { prefix: '/clients' })
-  await app.register(demoRoutes, { prefix: '/demo' })
+  await app.register(clientRoutes)
   await app.register(sessionRoutes)
+  await app.register(platformRoutes, { prefix: '/platform' })
 }

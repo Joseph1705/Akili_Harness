@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { as, createTestApp, login, ORIGIN, type TestContext } from './helpers.js'
 
 let t: TestContext | undefined
-afterEach(async () => { vi.useRealTimers(); await t?.close(); t = undefined })
+afterEach(async () => { await t?.close(); t = undefined })
 
 const post = (url: string, payload: object, headers: Record<string, string> = { origin: ORIGIN }) =>
   t!.app.inject({ method: 'POST', url, headers, payload })
@@ -12,7 +12,8 @@ describe('login by e-mail code', () => {
     t = await createTestApp()
     const res1 = await post('/api/auth/request-code', { email: 'Mireille@Example.CD' })
     expect(res1.statusCode).toBe(200)
-    const code = res1.json().demoCode
+    expect(res1.json()).toEqual({ ok: true })
+    const code = t.mailer.codes.get('mireille@example.cd')!
     expect(code).toMatch(/^\d{6}$/)
     const res2 = await post('/api/auth/verify', { email: 'mireille@example.cd', code })
     expect(res2.statusCode).toBe(200)
@@ -24,16 +25,19 @@ describe('login by e-mail code', () => {
     expect(me.json().org).toBeNull()
   })
 
-  it('does not reveal the code outside demo mode', async () => {
-    t = await createTestApp({ AKILI_DEMO: '0' })
+  it('says clearly when the e-mail cannot be sent, without leaking the code', async () => {
+    t = await createTestApp()
+    t.mailer.fail = true
     const res = await post('/api/auth/request-code', { email: 'a@example.cd' })
-    expect(res.statusCode).toBe(200)
-    expect(res.json().demoCode).toBeUndefined()
+    expect(res.statusCode).toBe(503)
+    expect(res.json().message).toMatch(/e-mail/)
+    expect(res.body).not.toMatch(/\d{6}/)
   })
 
   it('refuses a wrong code and locks after 5 attempts', async () => {
     t = await createTestApp()
-    const code = (await post('/api/auth/request-code', { email: 'a@example.cd' })).json().demoCode as string
+    await post('/api/auth/request-code', { email: 'a@example.cd' })
+    const code = t.mailer.codes.get('a@example.cd')!
     const wrong = code === '000000' ? '111111' : '000000'
     for (let i = 0; i < 5; i++) expect((await post('/api/auth/verify', { email: 'a@example.cd', code: wrong })).statusCode).toBe(400)
     expect((await post('/api/auth/verify', { email: 'a@example.cd', code })).statusCode).toBe(400)
@@ -41,15 +45,16 @@ describe('login by e-mail code', () => {
 
   it('refuses an expired code', async () => {
     t = await createTestApp()
-    const code = (await post('/api/auth/request-code', { email: 'a@example.cd' })).json().demoCode as string
-    vi.useFakeTimers({ toFake: ['Date'] })
-    vi.setSystemTime(Date.now() + 11 * 60 * 1000)
+    await post('/api/auth/request-code', { email: 'a@example.cd' })
+    const code = t.mailer.codes.get('a@example.cd')!
+    await t.db.run("UPDATE login_codes SET expires_at = now() - interval '1 minute'")
     expect((await post('/api/auth/verify', { email: 'a@example.cd', code })).statusCode).toBe(400)
   })
 
   it('a code works only once', async () => {
     t = await createTestApp()
-    const code = (await post('/api/auth/request-code', { email: 'a@example.cd' })).json().demoCode as string
+    await post('/api/auth/request-code', { email: 'a@example.cd' })
+    const code = t.mailer.codes.get('a@example.cd')!
     expect((await post('/api/auth/verify', { email: 'a@example.cd', code })).statusCode).toBe(200)
     expect((await post('/api/auth/verify', { email: 'a@example.cd', code })).statusCode).toBe(400)
   })

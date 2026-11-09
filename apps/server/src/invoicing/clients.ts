@@ -1,13 +1,39 @@
 /** Clients (who the organization invoices) and their contracts with rate cards. */
 import { randomUUID } from 'node:crypto'
-import { now, type Db } from '../db.js'
-import { parseMoney, parseQty } from './compute.js'
+import { z } from 'zod'
+import type { Db } from '../db.js'
 
-export interface Rate { code: string; label: string; unit: string; unit_price: string; max_qty?: string }
+export const RateInput = z.object({
+  code: z.string().trim().toUpperCase().regex(/^[A-Z0-9][A-Z0-9-]{1,19}$/, 'Code : 2 à 20 caractères, lettres, chiffres et tirets.'),
+  label: z.string().trim().min(2).max(200),
+  unit: z.string().trim().min(1).max(30),
+  unit_price: z.string().trim().regex(/^\d{1,12}(\.\d{1,2})?$/, 'Prix unitaire : nombre avec au plus 2 décimales, point comme séparateur.'),
+  max_qty: z.string().trim().regex(/^\d{1,9}(\.\d{1,3})?$/, 'Plafond : nombre avec au plus 3 décimales.').optional().or(z.literal('').transform(() => undefined)),
+}).strict()
+export type Rate = z.infer<typeof RateInput>
+
+export const ContractInput = z.object({
+  reference: z.string().trim().min(2).max(60),
+  po_number: z.string().trim().min(2).max(40),
+  currency: z.enum(['USD', 'CDF']),
+  payment_terms_days: z.number().int().min(0).max(365),
+  rates: z.array(RateInput).min(1).max(100).refine(r => new Set(r.map(x => x.code)).size === r.length, 'Chaque code de prestation doit être unique.'),
+}).strict()
+export type ContractInput = z.infer<typeof ContractInput>
+
+export const ClientInput = z.object({
+  name: z.string().trim().min(2).max(160),
+  address: z.string().trim().max(240).nullable().optional(),
+  nif: z.string().trim().max(30).nullable().optional(),
+  rccm: z.string().trim().max(60).nullable().optional(),
+  email: z.string().trim().toLowerCase().email().max(254).nullable().optional().or(z.literal('').transform(() => null)),
+  vat_applicable: z.boolean().default(true),
+}).strict()
+export type ClientInput = z.infer<typeof ClientInput>
 
 export interface Client {
   id: string; org_id: string; name: string; address: string | null; nif: string | null; rccm: string | null
-  email: string | null; vat_applicable: number
+  email: string | null; vat_applicable: boolean
 }
 
 export interface Contract {
@@ -15,44 +41,34 @@ export interface Contract {
   payment_terms_days: number; rates: Rate[]
 }
 
-export interface ContractInput {
-  name: string; address?: string; nif?: string; rccm?: string; email?: string; vat_applicable: boolean
-  contract: { reference: string; po_number: string; currency: string; payment_terms_days: number; rates: Rate[] }
+export async function createClient(db: Db, orgId: string, input: ClientInput): Promise<string> {
+  const id = randomUUID()
+  await db.run('INSERT INTO clients (id, org_id, name, address, nif, rccm, email, vat_applicable) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    id, orgId, input.name, input.address ?? null, input.nif ?? null, input.rccm ?? null, input.email ?? null, input.vat_applicable)
+  return id
 }
 
-export function importClient(db: Db, orgId: string, input: ContractInput): { clientId: string; contractId: string } {
-  for (const r of input.contract.rates) { parseMoney(r.unit_price); if (r.max_qty) parseQty(r.max_qty) }
-  const clientId = randomUUID()
-  const contractId = randomUUID()
-  db.tx(() => {
-    db.prepare('INSERT INTO clients (id, org_id, name, address, nif, rccm, email, vat_applicable, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(clientId, orgId, input.name, input.address ?? null, input.nif ?? null, input.rccm ?? null, input.email ?? null, input.vat_applicable ? 1 : 0, now())
-    db.prepare('INSERT INTO contracts (id, org_id, client_id, reference, po_number, currency, payment_terms_days, rates, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(contractId, orgId, clientId, input.contract.reference, input.contract.po_number, input.contract.currency, input.contract.payment_terms_days, JSON.stringify(input.contract.rates), now())
-  })
-  return { clientId, contractId }
+export async function createContract(db: Db, orgId: string, clientId: string, input: ContractInput): Promise<string> {
+  const id = randomUUID()
+  await db.run(`INSERT INTO contracts (id, org_id, client_id, reference, po_number, currency, payment_terms_days, rates)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, id, orgId, clientId, input.reference, input.po_number, input.currency, input.payment_terms_days, JSON.stringify(input.rates))
+  return id
 }
 
-function contractRow(row: Record<string, unknown> | undefined): Contract | undefined {
-  return row ? { ...(row as unknown as Contract), rates: JSON.parse(String(row.rates)) as Rate[] } : undefined
+export async function contractByPo(db: Db, orgId: string, po: string): Promise<Contract | undefined> {
+  return db.get<Contract>('SELECT * FROM contracts WHERE org_id = ? AND upper(po_number) = upper(?)', orgId, po.trim())
 }
 
-export function contractByPo(db: Db, orgId: string, po: string): Contract | undefined {
-  return contractRow(db.prepare('SELECT * FROM contracts WHERE org_id = ? AND upper(po_number) = upper(?)').get(orgId, po.trim()) as Record<string, unknown> | undefined)
+export async function contractById(db: Db, orgId: string, id: string): Promise<Contract | undefined> {
+  return db.get<Contract>('SELECT * FROM contracts WHERE org_id = ? AND id = ?', orgId, id)
 }
 
-export function contractById(db: Db, orgId: string, id: string): Contract | undefined {
-  return contractRow(db.prepare('SELECT * FROM contracts WHERE org_id = ? AND id = ?').get(orgId, id) as Record<string, unknown> | undefined)
+export async function clientById(db: Db, orgId: string, id: string): Promise<Client | undefined> {
+  return db.get<Client>('SELECT * FROM clients WHERE org_id = ? AND id = ?', orgId, id)
 }
 
-export function clientById(db: Db, orgId: string, id: string): Client | undefined {
-  return db.prepare('SELECT * FROM clients WHERE org_id = ? AND id = ?').get(orgId, id) as Client | undefined
-}
-
-export function listClients(db: Db, orgId: string) {
-  const clients = db.prepare('SELECT * FROM clients WHERE org_id = ? ORDER BY name').all(orgId) as unknown as Client[]
-  return clients.map(c => ({
-    ...c,
-    contracts: (db.prepare('SELECT * FROM contracts WHERE org_id = ? AND client_id = ?').all(orgId, c.id) as Record<string, unknown>[]).map(r => contractRow(r)),
-  }))
+export async function listClients(db: Db, orgId: string) {
+  const clients = await db.all<Client>('SELECT * FROM clients WHERE org_id = ? ORDER BY name', orgId)
+  const contracts = await db.all<Contract>('SELECT * FROM contracts WHERE org_id = ? ORDER BY created_at', orgId)
+  return clients.map(c => ({ ...c, contracts: contracts.filter(k => k.client_id === c.id) }))
 }

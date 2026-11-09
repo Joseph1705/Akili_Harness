@@ -1,41 +1,78 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+/** Test helpers. Each test gets its own PostgreSQL schema (AKILI_TEST_DATABASE_URL), dropped afterwards. */
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
-import { readFileSync } from 'node:fs'
 import { expect } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { buildApp } from '../src/app.js'
+import type { Mailer } from '../src/auth/mailer.js'
 import { loadConfig, type Config } from '../src/config.js'
 import { openDb, type Db } from '../src/db.js'
+
+export const TEST_DATABASE_URL = process.env.AKILI_TEST_DATABASE_URL ?? 'postgresql://akili@127.0.0.1:5433/akili_test'
+export const ORIGIN = 'http://localhost:3000'
+
+export interface TestDb { db: Db; drop(): Promise<void> }
+
+export async function testDb(): Promise<TestDb> {
+  const schema = `t_${randomBytes(6).toString('hex')}`
+  const admin = await openDb(TEST_DATABASE_URL, { migrate: false })
+  await admin.run(`CREATE SCHEMA ${schema}`)
+  await admin.close()
+  const db = await openDb(TEST_DATABASE_URL, { schema })
+  return {
+    db,
+    async drop() {
+      await db.close()
+      const cleanup = await openDb(TEST_DATABASE_URL, { migrate: false })
+      await cleanup.run(`DROP SCHEMA ${schema} CASCADE`)
+      await cleanup.close()
+    },
+  }
+}
+
+/** Captures login codes instead of sending e-mails. */
+export function captureMailer(): Mailer & { codes: Map<string, string>; fail: boolean } {
+  const codes = new Map<string, string>()
+  const mailer = {
+    codes, fail: false,
+    async sendLoginCode(email: string, code: string) {
+      if (mailer.fail) throw new Error('smtp down')
+      codes.set(email, code)
+    },
+  }
+  return mailer
+}
 
 export interface TestContext {
   app: FastifyInstance
   db: Db
   config: Config
+  mailer: ReturnType<typeof captureMailer>
   close(): Promise<void>
 }
-
-export const ORIGIN = 'http://localhost:3000'
 
 export async function createTestApp(overrides: Record<string, string> = {}): Promise<TestContext> {
   const dataDir = mkdtempSync(join(tmpdir(), 'akili-test-'))
   const config = loadConfig({
     NODE_ENV: 'test',
+    DATABASE_URL: TEST_DATABASE_URL,
     AKILI_DATA_DIR: dataDir,
     AKILI_MASTER_KEY: randomBytes(32).toString('base64'),
     AKILI_PUBLIC_ORIGIN: ORIGIN,
-    AKILI_DEMO: '1',
+    AKILI_SIGNUP_CREDITS: '0',
     ...overrides,
   })
-  const db = openDb(join(dataDir, 'akili.db'))
-  const app = await buildApp({ config, db })
+  const { db, drop } = await testDb()
+  const mailer = captureMailer()
+  const app = await buildApp({ config, db, mailer })
   await app.ready()
   return {
-    app, db, config,
+    app, db, config, mailer,
     async close() {
       await app.close()
-      db.close()
+      await drop()
       rmSync(dataDir, { recursive: true, force: true })
     },
   }
@@ -45,11 +82,10 @@ export async function createTestApp(overrides: Record<string, string> = {}): Pro
 export async function login(t: TestContext, email: string): Promise<string> {
   const req = await t.app.inject({ method: 'POST', url: '/api/auth/request-code', headers: { origin: ORIGIN }, payload: { email } })
   if (req.statusCode !== 200) throw new Error(`request-code ${req.statusCode} ${req.body}`)
-  const code = req.json().demoCode as string
+  const code = t.mailer.codes.get(email.trim().toLowerCase())!
   const res = await t.app.inject({ method: 'POST', url: '/api/auth/verify', headers: { origin: ORIGIN }, payload: { email, code } })
   if (res.statusCode !== 200) throw new Error(`verify ${res.statusCode} ${res.body}`)
-  const cookie = String(res.headers['set-cookie']).split(';')[0]!
-  return cookie
+  return String(res.headers['set-cookie']).split(';')[0]!
 }
 
 /** inject() with the session cookie and the browser Origin header. */
@@ -74,7 +110,7 @@ export function multipart(fields: Record<string, string>, file?: { field: string
 }
 
 /** Log in and create a company organization with finished onboarding. */
-export async function onboardedOwner(t: TestContext, email: string, name = 'Kibala Services SARL (fictif)'): Promise<{ cookie: string; orgId: string; call: ReturnType<typeof as> }> {
+export async function onboardedOwner(t: TestContext, email: string, name = 'Kibala Services SARL (fictif)') {
   const cookie = await login(t, email)
   const call = as(t, cookie)
   const res = await call('POST', '/api/orgs', { kind: 'company', name })
@@ -83,16 +119,37 @@ export async function onboardedOwner(t: TestContext, email: string, name = 'Kiba
   await call('POST', '/api/orgs/current/consents', { type: 'privacy', granted: true })
   const done = await call('POST', '/api/orgs/current/onboarding/complete', {})
   if (done.statusCode !== 200) throw new Error(`complete ${done.statusCode} ${done.body}`)
-  return { cookie, orgId: res.json().org.id, call }
+  return { cookie, orgId: res.json().org.id as string, call }
 }
 
-const reportsDir = join(import.meta.dirname, '../../../fixtures/reports')
+const fixturesDir = join(import.meta.dirname, '../../../fixtures')
+const reportsDir = join(fixturesDir, 'reports')
 
-/** Owner with demo contracts, credits and an invoicing agent; `upload(name)` sends a fixture report. */
+/** Create the fictitious clients and contracts of fixtures/contracts.json through the API. */
+export async function importFixtureClients(call: ReturnType<typeof as>): Promise<void> {
+  const data = JSON.parse(readFileSync(join(fixturesDir, 'contracts.json'), 'utf8'))
+  const p = data.provider
+  const org = await call('PATCH', '/api/orgs/current', { address: p.address, rccm: p.rccm, id_nat: p.id_nat, nif: p.nif, bank_details: p.bank_details, vat_status: 'yes' })
+  expect(org.statusCode).toBe(200)
+  for (const c of data.clients) {
+    const client = await call('POST', '/api/clients', { name: c.name, address: c.address, nif: c.nif, rccm: c.rccm, email: c.email, vat_applicable: c.vat_applicable })
+    expect(client.statusCode, client.body).toBe(200)
+    const contract = await call('POST', `/api/clients/${client.json().client.id}/contracts`, c.contract)
+    expect(contract.statusCode, contract.body).toBe(200)
+  }
+}
+
+/** Platform credit top-up, as the platform administrator would do. */
+export async function grantCredits(t: TestContext, orgId: string, credits: number): Promise<void> {
+  const { topup } = await import('../src/credits.js')
+  await topup(t.db, orgId, credits, 'TEST-PAY', null)
+}
+
+/** Owner with clients, credits and an invoicing agent; `upload(name)` sends a fixture report. */
 export async function readyOrg(ctx: TestContext, email = 'owner@example.cd', credits = 20) {
   const owner = await onboardedOwner(ctx, email)
-  expect((await owner.call('POST', '/api/demo/load', {})).statusCode).toBe(200)
-  if (credits > 0) await owner.call('POST', '/api/credits/topup', { credits, ref: 'FICTIF-PAY' })
+  await importFixtureClients(owner.call)
+  if (credits > 0) await grantCredits(ctx, owner.orgId, credits)
   const agent = (await owner.call('POST', '/api/agents', { packId: 'facturation-sous-traitance', name: 'Agent Facturation' })).json().agent
   const upload = async (name: string) => {
     const body = multipart({ agentId: agent.id }, { field: 'file', filename: name, bytes: readFileSync(join(reportsDir, name)) })
@@ -100,4 +157,3 @@ export async function readyOrg(ctx: TestContext, email = 'owner@example.cd', cre
   }
   return { ...owner, agent, upload }
 }
-

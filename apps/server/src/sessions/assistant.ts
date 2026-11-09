@@ -19,23 +19,23 @@ export const COMMANDS = [
   { cmd: '/aide', desc: 'Liste des commandes' },
 ]
 
-export function answer(db: Db, config: Config, orgId: string, plan: 'solo' | 'entreprise', text: string): Reply {
+export async function answer(db: Db, config: Config, orgId: string, plan: 'solo' | 'entreprise', text: string): Promise<Reply> {
   const command = text.trim().split(/\s+/)[0]!.toLowerCase()
   switch (command) {
     case '/aide':
       return { text: 'Voici ce que je sais faire :', items: COMMANDS.map(c => ({ label: c.cmd, value: c.desc })) }
     case '/solde': {
-      const n = balance(db, orgId)
+      const n = await balance(db, orgId)
       return { text: `Il vous reste ${n} crédit${n > 1 ? 's' : ''}. Un crédit = un rapport transformé en projet de facture.` }
     }
     case '/validations': {
-      const rows = db.prepare(`SELECT i.id, i.number, i.total_cents, i.currency, c.name FROM invoices i JOIN clients c ON c.id = i.client_id AND c.org_id = i.org_id
-        WHERE i.org_id = ? AND i.status = 'draft' ORDER BY i.created_at LIMIT 10`).all(orgId) as Array<{ id: string; number: string; total_cents: number; currency: string; name: string }>
+      const rows = await db.all<{ id: string; number: string; total_cents: number; currency: string; name: string }>(`SELECT i.id, i.number, i.total_cents, i.currency, c.name FROM invoices i JOIN clients c ON c.id = i.client_id AND c.org_id = i.org_id
+        WHERE i.org_id = ? AND i.status = 'draft' ORDER BY i.created_at LIMIT 10`, orgId)
       if (rows.length === 0) return { text: 'Aucune facture en attente de validation.' }
       return { text: `${rows.length} facture${rows.length > 1 ? 's' : ''} attend${rows.length > 1 ? 'ent' : ''} votre validation :`, items: rows.map(r => ({ label: `${r.number} · ${r.name}`, value: `${formatMoney(r.total_cents)} ${r.currency}`, href: `/validations/${r.id}` })) }
     }
     case '/agents': {
-      const rows = db.prepare('SELECT name, status FROM agents WHERE org_id = ? ORDER BY created_at').all(orgId) as Array<{ name: string; status: string }>
+      const rows = await db.all<{ name: string; status: string }>('SELECT name, status FROM agents WHERE org_id = ? ORDER BY created_at', orgId)
       if (rows.length === 0) return { text: "Vous n'avez pas encore d'agent. Créez-en un depuis « Packs d'agents »." }
       return { text: 'Vos agents :', items: rows.map(r => ({ label: r.name, value: r.status === 'active' ? 'actif' : 'en pause' })) }
     }
@@ -47,7 +47,7 @@ export function answer(db: Db, config: Config, orgId: string, plan: 'solo' | 'en
       if (!hasKey) {
         return { text: `Les questions libres passent par un modèle de langage (${model} pour votre offre). Il n'est pas encore configuré sur ce serveur. Les commandes, elles, fonctionnent : tapez /aide.` }
       }
-      if (!consentState(db, orgId).external_model) {
+      if (!(await consentState(db, orgId)).external_model) {
         return { text: `Pour répondre aux questions libres, j'utilise ${model}, un fournisseur externe. Un administrateur doit d'abord l'autoriser dans Paramètres › Données et consentements.` }
       }
       return { text: `Le branchement de ${model} via DeepSeek Harness est prévu à l'étape suivante. En attendant, tapez /aide pour les commandes disponibles.` }

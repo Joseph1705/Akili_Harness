@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { drainJobs } from '../src/jobs.js'
-import { createTestApp, multipart, readyOrg, ORIGIN, type TestContext } from './helpers.js'
+import { createTestApp, grantCredits, multipart, readyOrg, ORIGIN, type TestContext } from './helpers.js'
 
 let t: TestContext | undefined
 afterEach(async () => { await t?.close(); t = undefined })
@@ -38,7 +38,7 @@ describe('document processing', () => {
     await o.upload('RA-2026-10-021_Kalembe_Forage.pdf')
     await drainJobs(t.app)
     expect((await o.call('GET', '/api/documents')).json().documents[0].status).toBe('waiting_credits')
-    await o.call('POST', '/api/credits/topup', { credits: 5, ref: 'FICTIF-PAY-2' })
+    await grantCredits(t, o.orgId, 5)
     await drainJobs(t.app)
     expect((await o.call('GET', '/api/documents')).json().documents[0].status).toBe('done')
     expect((await o.call('GET', '/api/credits')).json().balance).toBe(4)
@@ -109,6 +109,16 @@ describe('checks, validation and PDF', () => {
     expect(first.json().invoice).toMatchObject({ status: 'validated', number: 'FAC-2026-0001' })
     const other = await o.call('POST', `/api/invoices/${invoice.id}/validate`, {}, { 'idempotency-key': '7f1c2b8e-3a5d-4e7f-9a1b-2c3d4e5f6a7b' })
     expect(other.statusCode).toBe(409)
+  })
+
+  it('validates only once when two people click at the same time', async () => {
+    t = await createTestApp()
+    const { o, invoice } = await draftFor('RA-2026-10-014_Tshala_Kipushi.pdf')
+    const keys = ['1f1c2b8e-3a5d-4e7f-9a1b-2c3d4e5f6a7b', '2f1c2b8e-3a5d-4e7f-9a1b-2c3d4e5f6a7b', '3f1c2b8e-3a5d-4e7f-9a1b-2c3d4e5f6a7b']
+    const results = await Promise.all(keys.map(k => o.call('POST', `/api/invoices/${invoice.id}/validate`, {}, { 'idempotency-key': k })))
+    expect(results.map(r => r.statusCode).sort()).toEqual([200, 409, 409])
+    const counters = await t.db.all<{ next: number }>("SELECT next FROM invoice_counters WHERE series = 'FAC'")
+    expect(counters).toEqual([{ next: 2 }])
   })
 
   it('records a correction and recomputes the totals', async () => {
