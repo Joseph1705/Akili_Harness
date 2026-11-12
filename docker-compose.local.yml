@@ -1,0 +1,14 @@
+# Local use on your own computer (no domain, no Gmail needed).
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
+# Then open http://localhost:8080. The login code appears in: docker compose logs app
+services:
+  caddy:
+    ports: !override
+      - "8080:80"
+    environment:
+      APP_DOMAIN: ":80"
+  app:
+    environment:
+      NODE_ENV: development
+      AKILI_PUBLIC_ORIGIN: http://localhost:8080
+      AKILI_HOSTING_LABEL: Ordinateur local
