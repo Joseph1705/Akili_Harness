@@ -22,7 +22,7 @@ export async function platformRoutes(app: FastifyInstance): Promise<void> {
     admin(request)
     return {
       orgs: await db.all(`SELECT o.id, o.name, o.kind, o.plan, o.city, o.created_at, o.onboarding_done_at,
-        (SELECT COALESCE(SUM(amount), 0) FROM credit_ledger l WHERE l.org_id = o.id) AS balance,
+        COALESCE((SELECT w.balance FROM credit_wallets w WHERE w.org_id = o.id), 0) AS balance,
         (SELECT count(*) FROM memberships m WHERE m.org_id = o.id) AS members,
         (SELECT count(*) FROM documents d WHERE d.org_id = o.id) AS documents,
         (SELECT u.email FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.org_id = o.id AND m.role = 'owner' LIMIT 1) AS owner_email

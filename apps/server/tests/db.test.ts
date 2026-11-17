@@ -23,7 +23,7 @@ describe('PostgreSQL access layer', () => {
   it('creates every table of the schema and records the version', async () => {
     t = await testDb()
     const tables = (await t.db.all<{ table_name: string }>("SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema() ORDER BY table_name")).map(r => r.table_name)
-    for (const name of ['users', 'login_codes', 'sessions', 'organizations', 'memberships', 'consents', 'audit_log', 'blobs', 'credit_ledger',
+    for (const name of ['users', 'login_codes', 'sessions', 'organizations', 'memberships', 'consents', 'audit_log', 'blobs', 'credit_ledger_legacy', 'credit_wallets', 'credit_transactions',
       'agents', 'clients', 'contracts', 'documents', 'document_sessions', 'invoices', 'invoice_counters', 'jobs', 'idempotency', 'chat_sessions', 'chat_events', 'schema_migrations']) {
       expect(tables, name).toContain(name)
     }

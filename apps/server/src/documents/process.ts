@@ -2,7 +2,7 @@
 import type { FastifyInstance } from 'fastify'
 import { randomUUID } from 'node:crypto'
 import { audit } from '../audit.js'
-import { consume } from '../credits.js'
+import { applyCredit, InsufficientCredits } from '../billing/wallet.js'
 import { formatMoney } from '../invoicing/compute.js'
 import { clientById, contractByPo } from '../invoicing/clients.js'
 import { buildDraft, type OrgTaxProfile } from '../invoicing/draft.js'
@@ -65,18 +65,14 @@ export async function processDocument(app: FastifyInstance, orgId: string, docum
   }
   await step('Rapprocher', `${report.po} ↔ ${contract.reference}`, client.name)
 
-  // 4. One credit for this document (founder decision: 1 credit = 1 document).
-  if (!await consume(db, orgId, documentId)) {
-    await finish('waiting_credits')
-    await say('Crédits épuisés : ce rapport sera traité dès la prochaine recharge.')
-    return 'waiting_credits'
-  }
-
-  // 5. Draft invoice, every number computed by code (rule 6).
+  // 4. Draft invoice, every number computed by code (rule 6), and its one credit, in ONE transaction:
+  // if anything fails, no invoice exists and no credit is spent (DIRECTIVES §5 B).
   const org = (await db.get<OrgTaxProfile>('SELECT nif, rccm, vat_status FROM organizations WHERE id = ?', orgId))!
   const draft = buildDraft(report, contract, client, org)
   const invoiceId = randomUUID()
-  const number = await db.tx(async tx => {
+  let number: string
+  try {
+    number = await db.tx(async tx => {
     const issue = await tx.get<{ issue: string; due: string; year: number }>(`SELECT current_date::text AS issue, (current_date + ?::int)::text AS due,
       extract(year FROM current_date)::int AS year`, contract.payment_terms_days)
     const n = await nextNumber(tx, orgId, issue!.year, 'P')
@@ -88,8 +84,15 @@ export async function processDocument(app: FastifyInstance, orgId: string, docum
     report.period ?? null, JSON.stringify(draft.checks))
     await tx.run("UPDATE documents SET status = 'done', error = NULL, invoice_id = ?, processed_at = now() WHERE id = ? AND org_id = ?", invoiceId, documentId, orgId)
     await tx.run('UPDATE agents SET last_action_at = now() WHERE id = ? AND org_id = ?', doc.agent_id, orgId)
+    await applyCredit(tx, { orgId, type: 'consumption', amount: -1, operationKey: `document:${documentId}`, documentId, invoiceId })
     return n
-  })
+    })
+  } catch (error) {
+    if (!(error instanceof InsufficientCredits)) throw error
+    await finish('waiting_credits')
+    await say(`Crédits épuisés (solde : ${error.balance}) : ce rapport sera traité dès la prochaine recharge.`)
+    return 'waiting_credits'
+  }
   const warnings = draft.checks.filter(c => c.status === 'warning' || c.status === 'error')
   await step('Calculer', `${draft.lines.length} ligne${draft.lines.length > 1 ? 's' : ''} · TVA ${draft.vatRateBp / 100} %`, `${formatMoney(draft.totalCents)} ${contract.currency} TTC`)
   await step('Préparer', number, warnings.length ? `${warnings.length} point${warnings.length > 1 ? 's' : ''} à vérifier` : 'tous les contrôles sont passés')

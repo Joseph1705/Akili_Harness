@@ -260,6 +260,82 @@ export const MIGRATIONS: Array<{ version: number; name: string; sql: string }> =
   );
   `,
   },
+  {
+    version: 2,
+    name: 'credit wallets and append-only credit transactions',
+    sql: `
+  CREATE TABLE credit_wallets (
+    org_id uuid PRIMARY KEY REFERENCES organizations (id),
+    balance integer NOT NULL DEFAULT 0 CHECK (balance >= 0),
+    total_purchased integer NOT NULL DEFAULT 0,
+    total_consumed integer NOT NULL DEFAULT 0,
+    total_refunded integer NOT NULL DEFAULT 0,
+    total_allocated integer NOT NULL DEFAULT 0,
+    total_corrected integer NOT NULL DEFAULT 0,
+    low_balance_threshold integer NOT NULL DEFAULT 10 CHECK (low_balance_threshold >= 0),
+    updated_at timestamptz NOT NULL DEFAULT now()
+  );
+
+  CREATE TABLE credit_transactions (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    public_id uuid NOT NULL UNIQUE,
+    org_id uuid NOT NULL REFERENCES organizations (id),
+    type text NOT NULL CHECK (type IN ('purchase', 'consumption', 'refund', 'admin_allocation', 'admin_correction')),
+    amount integer NOT NULL CHECK (amount <> 0),
+    balance_before integer NOT NULL CHECK (balance_before >= 0),
+    balance_after integer NOT NULL CHECK (balance_after >= 0),
+    operation_key text NOT NULL,
+    document_id uuid,
+    invoice_id uuid,
+    payment_id uuid,
+    payment_reference text,
+    actor_user_id uuid,
+    reason text,
+    status text NOT NULL DEFAULT 'completed' CHECK (status IN ('completed')),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (org_id, operation_key),
+    CHECK (balance_after = balance_before + amount),
+    CHECK ((type IN ('purchase', 'refund', 'admin_allocation') AND amount > 0) OR (type = 'consumption' AND amount < 0) OR type = 'admin_correction')
+  );
+  CREATE INDEX credit_transactions_org ON credit_transactions (org_id, id DESC);
+  CREATE INDEX credit_transactions_document ON credit_transactions (org_id, document_id) WHERE document_id IS NOT NULL;
+
+  CREATE FUNCTION akili_append_only() RETURNS trigger LANGUAGE plpgsql AS $fn$
+  BEGIN
+    RAISE EXCEPTION '% is append-only: record a compensating transaction instead', TG_TABLE_NAME;
+  END
+  $fn$;
+  CREATE TRIGGER credit_transactions_append_only BEFORE UPDATE OR DELETE ON credit_transactions
+    FOR EACH ROW EXECUTE FUNCTION akili_append_only();
+  CREATE TRIGGER credit_transactions_no_truncate BEFORE TRUNCATE ON credit_transactions
+    FOR EACH STATEMENT EXECUTE FUNCTION akili_append_only();
+
+  -- Take over the first ledger: same history, now with balances before and after.
+  INSERT INTO credit_transactions (public_id, org_id, type, amount, balance_before, balance_after, operation_key,
+    document_id, payment_reference, actor_user_id, reason, created_at)
+  SELECT gen_random_uuid(), org_id,
+    CASE kind WHEN 'consume' THEN 'consumption' WHEN 'adjust' THEN 'admin_correction' ELSE 'admin_allocation' END,
+    amount, running - amount, running,
+    CASE WHEN kind = 'consume' THEN 'document:' || document_id::text ELSE 'legacy:' || id::text END,
+    document_id, CASE WHEN kind = 'topup' AND ref <> 'BIENVENUE' THEN ref END, user_id,
+    CASE WHEN ref = 'BIENVENUE' THEN 'Crédits de bienvenue' WHEN kind = 'topup' THEN 'Recharge après paiement reçu' ELSE ref END,
+    created_at
+  FROM (SELECT l.*, SUM(amount) OVER (PARTITION BY org_id ORDER BY id) AS running FROM credit_ledger l) s
+  WHERE amount <> 0
+  ORDER BY id;
+
+  INSERT INTO credit_wallets (org_id, balance, total_purchased, total_consumed, total_refunded, total_allocated, total_corrected)
+  SELECT o.id, COALESCE(SUM(t.amount), 0), 0,
+    COALESCE(-SUM(t.amount) FILTER (WHERE t.type = 'consumption'), 0), 0,
+    COALESCE(SUM(t.amount) FILTER (WHERE t.type = 'admin_allocation'), 0),
+    COALESCE(SUM(t.amount) FILTER (WHERE t.type = 'admin_correction'), 0)
+  FROM organizations o LEFT JOIN credit_transactions t ON t.org_id = o.id GROUP BY o.id;
+
+  ALTER TABLE credit_ledger RENAME TO credit_ledger_legacy;
+  CREATE TRIGGER credit_ledger_legacy_append_only BEFORE UPDATE OR DELETE ON credit_ledger_legacy
+    FOR EACH ROW EXECUTE FUNCTION akili_append_only();
+  `,
+  },
 ]
 
 export async function migrate(db: Db): Promise<void> {

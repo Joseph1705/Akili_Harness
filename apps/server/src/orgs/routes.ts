@@ -50,7 +50,7 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
         id, body.kind, name, body.kind === 'company' ? 'entreprise' : 'solo')
       await tx.run("INSERT INTO memberships (user_id, org_id, role) VALUES (?, ?, 'owner')", user.id, id)
       await tx.run('UPDATE sessions SET current_org_id = ? WHERE id = ?', id, request.sessionId!)
-      if (config.signupCredits > 0) await topup(tx, id, config.signupCredits, 'BIENVENUE', null)
+      if (config.signupCredits > 0) await topup(tx, id, config.signupCredits, 'BIENVENUE', null, 'signup')
     })
     await audit(db, { orgId: id, userId: user.id }, 'org.created', 'organization', id, { kind: body.kind })
     return { org: await orgPayload(id, 'owner') }

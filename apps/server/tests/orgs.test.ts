@@ -36,7 +36,7 @@ describe('onboarding', () => {
     const { call } = await onboardedOwner(t, 'a@example.cd')
     const credits = (await call('GET', '/api/credits')).json()
     expect(credits.balance).toBe(10)
-    expect(credits.entries[0]).toMatchObject({ kind: 'topup', ref: 'BIENVENUE' })
+    expect(credits.entries[0]).toMatchObject({ type: 'admin_allocation', amount: 10, balance_before: 0, balance_after: 10, reason: 'Crédits de bienvenue' })
   })
 
   it('gives an individual account the solo plan', async () => {
