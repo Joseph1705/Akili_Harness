@@ -42,6 +42,8 @@ export interface Config {
   webDist: string | undefined
   /** Model keys present in the environment (values never stored here). */
   models: { deepseek: boolean; anthropic: boolean }
+  /** SasPay credentials; undefined: online payment unavailable (never simulated). */
+  saspay: { baseUrl: string; apiKey: string; webhookSecret: string | undefined } | undefined
 }
 
 function fail(name: string, why: string): never {
@@ -64,6 +66,16 @@ function readMasterKey(env: NodeJS.ProcessEnv, production: boolean, dataDir: str
   writeFileSync(path, key.toString('base64'), { mode: 0o600 })
   chmodSync(path, 0o600)
   return key
+}
+
+function readSasPay(env: NodeJS.ProcessEnv, production: boolean): Config['saspay'] {
+  const apiKey = env.SASPAY_API_KEY?.trim()
+  if (!apiKey) return undefined
+  const baseUrl = (env.SASPAY_BASE_URL?.trim() || 'https://api.saspay.me/api/v1').replace(/\/+$/, '')
+  let url: URL
+  try { url = new URL(baseUrl) } catch { fail('SASPAY_BASE_URL', 'must be a URL') }
+  if (production && url.protocol !== 'https:') fail('SASPAY_BASE_URL', 'must use https in production')
+  return { baseUrl, apiKey, webhookSecret: env.SASPAY_WEBHOOK_SECRET?.trim() || undefined }
 }
 
 function readSmtp(env: NodeJS.ProcessEnv, production: boolean): SmtpConfig | undefined {
@@ -115,5 +127,6 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     supportEmail: env.AKILI_SUPPORT_EMAIL?.trim() || undefined,
     webDist: env.AKILI_WEB_DIST,
     models: { deepseek: Boolean(env.DEEPSEEK_API_KEY), anthropic: Boolean(env.ANTHROPIC_API_KEY) },
+    saspay: readSasPay(env, production),
   }
 }

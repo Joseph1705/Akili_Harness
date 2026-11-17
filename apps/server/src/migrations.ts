@@ -336,6 +336,69 @@ export const MIGRATIONS: Array<{ version: number; name: string; sql: string }> =
     FOR EACH ROW EXECUTE FUNCTION akili_append_only();
   `,
   },
+  {
+    version: 3,
+    name: 'credit packages and payments',
+    sql: `
+  CREATE TABLE credit_packages (
+    id uuid PRIMARY KEY,
+    name text NOT NULL,
+    credits integer NOT NULL CHECK (credits > 0),
+    price_cents bigint CHECK (price_cents IS NULL OR price_cents > 0),
+    currency text NOT NULL DEFAULT 'USD' CHECK (currency IN ('USD', 'CDF')),
+    description text,
+    active boolean NOT NULL DEFAULT false,
+    promotional boolean NOT NULL DEFAULT false,
+    sort_order integer NOT NULL DEFAULT 0,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (NOT active OR price_cents IS NOT NULL)
+  );
+  -- Examples only (DIRECTIVES §5 D): inactive and without a price until an administrator sets one.
+  INSERT INTO credit_packages (id, name, credits, sort_order, description) VALUES
+    (gen_random_uuid(), 'Essentiel', 100, 1, '100 documents transformés en factures'),
+    (gen_random_uuid(), 'Pro', 500, 2, '500 documents transformés en factures'),
+    (gen_random_uuid(), 'Cabinet', 1000, 3, '1 000 documents transformés en factures'),
+    (gen_random_uuid(), 'Entreprise', 5000, 4, '5 000 documents transformés en factures');
+
+  CREATE TABLE payments (
+    id uuid PRIMARY KEY,
+    org_id uuid NOT NULL REFERENCES organizations (id),
+    package_id uuid REFERENCES credit_packages (id),
+    package_name text NOT NULL,
+    credits integer NOT NULL CHECK (credits > 0),
+    amount_cents bigint NOT NULL CHECK (amount_cents > 0),
+    currency text NOT NULL CHECK (currency IN ('USD', 'CDF')),
+    provider text NOT NULL DEFAULT 'saspay',
+    status text NOT NULL CHECK (status IN ('created', 'pending', 'succeeded', 'failed', 'cancelled', 'expired')),
+    provider_session_id text UNIQUE,
+    checkout_url text,
+    provider_transaction_id text,
+    provider_reference text,
+    provider_status text,
+    idempotency_key text NOT NULL,
+    created_by uuid NOT NULL REFERENCES users (id),
+    failure_reason text,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    verified_at timestamptz,
+    credited_at timestamptz,
+    UNIQUE (org_id, created_by, idempotency_key)
+  );
+  CREATE INDEX payments_org ON payments (org_id, created_at DESC);
+  CREATE INDEX payments_open ON payments (status, created_at) WHERE status IN ('created', 'pending');
+
+  CREATE TABLE payment_events (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    provider text NOT NULL,
+    event_type text,
+    signature_valid boolean NOT NULL,
+    payload jsonb,
+    result text,
+    received_at timestamptz NOT NULL DEFAULT now()
+  );
+  `,
+  },
 ]
 
 export async function migrate(db: Db): Promise<void> {

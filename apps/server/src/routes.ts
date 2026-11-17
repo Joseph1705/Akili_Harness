@@ -12,6 +12,7 @@ import { invoiceRoutes } from './invoicing/routes.js'
 import { clientRoutes } from './invoicing/client-routes.js'
 import { sessionRoutes } from './sessions/routes.js'
 import { platformRoutes } from './platform.js'
+import { billingRoutes, sasPayWebhookRoutes } from './billing/payments.js'
 
 const UNSAFE = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 export const APP_VERSION = '0.2.0'
@@ -21,6 +22,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   // Cross-site request forgery: a state-changing request must come from our own origin.
   app.addHook('onRequest', async (request) => {
+    // Webhooks come from providers' servers, not from a browser: they prove themselves by signature instead.
+    const webhook = request.url.startsWith('/api/webhooks/')
+    if (webhook) return
     if (UNSAFE.has(request.method) && request.headers.origin !== config.publicOrigin) {
       throw forbidden('Requête refusée (origine non autorisée).')
     }
@@ -46,4 +50,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   await app.register(clientRoutes)
   await app.register(sessionRoutes)
   await app.register(platformRoutes, { prefix: '/platform' })
+  await app.register(billingRoutes, { prefix: '/billing' })
+  await app.register(sasPayWebhookRoutes, { prefix: '/webhooks' })
 }

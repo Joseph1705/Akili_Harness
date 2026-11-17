@@ -7,6 +7,7 @@ import type { FastifyInstance } from 'fastify'
 import { randomUUID } from 'node:crypto'
 import type { Db } from './db.js'
 import { processDocument } from './documents/process.js'
+import { reconcilePayments } from './billing/payments.js'
 
 export type JobOutcome = 'done' | 'waiting_credits'
 
@@ -51,10 +52,15 @@ export async function startWorker(app: FastifyInstance, intervalMs = 500): Promi
   // Jobs left "running" by a crash go back to the queue.
   await app.deps.db.run("UPDATE jobs SET status = 'pending' WHERE status = 'running'")
   let running = false
+  let lastReconcile = 0
   const timer = setInterval(async () => {
     if (running) return
     running = true
-    try { while (await runOneJob(app)) { /* drain */ } } catch (error) { app.log.error({ error: String(error) }, 'worker loop') } finally { running = false }
+    try {
+      while (await runOneJob(app)) { /* drain */ }
+      // Payments whose webhook was lost are verified with the provider every few minutes.
+      if (Date.now() - lastReconcile > 3 * 60_000) { lastReconcile = Date.now(); await reconcilePayments(app) }
+    } catch (error) { app.log.error({ error: String(error) }, 'worker loop') } finally { running = false }
   }, intervalMs)
   return { stop: () => clearInterval(timer) }
 }
