@@ -8,3 +8,6 @@ data/
 .akili/
 apps/web/dist/
 dist/
+
+# Personal Claude Code settings (machine-specific hooks)
+.claude/settings.local.json
