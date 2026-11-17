@@ -7,7 +7,7 @@ describe('config', () => {
     expect(gate.plan.routes).toEqual([{ provider: 'anthropic', models: ['claude-opus-5-5'] }])
     expect(gate.externalModelConsent).toBe(false)
     expect(gate.locale).toBe('fr')
-    expect(ledgerPath).toMatch(/\.akili\/credits\.jsonl$/)
+    expect(ledgerPath).toMatch(/\.akili[\\/]credits\.jsonl$/)
   })
 
   it('requires a source on every price', () => {

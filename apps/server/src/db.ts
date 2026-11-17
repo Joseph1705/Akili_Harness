@@ -77,7 +77,8 @@ export async function openDb(url: string, options: OpenOptions = {}): Promise<Db
   const pool = new pg.Pool({
     connectionString: url,
     max: options.max ?? 10,
-    ...(options.schema ? { options: `-c search_path=${options.schema}` } : {}),
+    // `public` stays reachable for extension types (pgvector's `vector`).
+    ...(options.schema ? { options: `-c search_path=${options.schema},public` } : {}),
   })
   pool.on('error', (error) => console.error('[db] idle client error:', error.message))
   const db = handle(pool, pool)

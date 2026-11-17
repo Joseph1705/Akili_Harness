@@ -4,7 +4,8 @@ name: akili-dev
 
 services:
   db:
-    image: postgres:16-alpine
+    build: ./deploy/postgres
+    image: akili-postgres:16-pgvector
     environment:
       POSTGRES_USER: akili
       POSTGRES_PASSWORD: akili

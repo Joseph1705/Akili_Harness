@@ -41,7 +41,9 @@ services:
         condition: service_healthy
 
   db:
-    image: postgres:16-alpine
+    # PostgreSQL 16 Alpine + pgvector (deploy/postgres/Dockerfile): same base as before, existing volumes keep working.
+    build: ./deploy/postgres
+    image: akili-postgres:16-pgvector
     restart: unless-stopped
     environment:
       POSTGRES_USER: akili
