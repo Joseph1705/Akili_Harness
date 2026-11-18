@@ -24,7 +24,8 @@ Décisions d'architecture : `docs/decisions/`. Notes sur le cœur : `docs/dsh-no
 
 - Cœur : DeepSeek Harness, sous-module `vendor/deepseek-harness`, figé sur `0.2.2-rc.1`
   (commit `fcc0ad4621`). Ne jamais le modifier ; tout passe par `plugins/` et `config/akili.patch.yml`.
-- Node `>=24.9` (exigé par dsh). Gestionnaire : pnpm.
+- Node `>=24.9` (exigé par dsh). Gestionnaire : pnpm **11.28.5** (fixé par le dépôt et par dsh ; une autre version
+  fait échouer l'installation de dsh avec `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`).
 - Installer dsh : `cd vendor/deepseek-harness && CI=true pnpm install --frozen-lockfile && pnpm run build`
   (`CI=true` saute l'installation des hooks git de dsh, qui échoue dans un sous-module).
 - Application : `apps/server` (PostgreSQL) + `apps/web`. Dev : `pnpm dev:db` puis `pnpm dev`. Tests : `pnpm test` (PostgreSQL requis, `AKILI_TEST_DATABASE_URL`). Types : `pnpm typecheck`.

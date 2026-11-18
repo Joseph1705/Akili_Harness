@@ -33,17 +33,31 @@ const cases = [
   },
 ]
 
+// First: the launcher starts the pinned dsh with our overlay (needs no build and no key). If it cannot,
+// every case below would fail without a reason, so stop here and say why.
+function launcherStartsDsh() {
+  const run = spawnSync('node', [join(root, 'scripts/dsh.mjs'), 'headless', '--dump-config'], { env: base, encoding: 'utf8', timeout: 180_000 })
+  const ok = run.status === 0 && run.stdout.includes('id: akili-credits')
+  console.log(`${ok ? 'PASS' : 'FAIL'}  launcher starts dsh with the Akili overlay\n      ${ok ? 'akili-credits is in the composed configuration' : `exit ${run.status}: ${(run.stderr || run.error?.message || 'no output').slice(-1000)}`}\n`)
+  return ok
+}
+
 let failed = 0
 try {
-  for (const c of cases) {
-    c.before?.()
-    const line = dshError(c.env)
-    const ok = line.includes(c.expect)
-    if (!ok) failed++
-    console.log(`${ok ? 'PASS' : 'FAIL'}  ${c.name}\n      ${line}`)
+  if (!launcherStartsDsh()) {
+    console.log('launcher failed: the dsh cases were not run')
+    process.exitCode = 1
+  } else {
+    for (const c of cases) {
+      c.before?.()
+      const line = dshError(c.env)
+      const ok = line.includes(c.expect)
+      if (!ok) failed++
+      console.log(`${ok ? 'PASS' : 'FAIL'}  ${c.name}\n      ${line}`)
+    }
+    console.log(failed === 0 ? `\n${cases.length + 1} passed` : `\n${failed} of ${cases.length + 1} failed`)
+    process.exitCode = failed === 0 ? 0 : 1
   }
 } finally {
   rmSync(work, { recursive: true, force: true })
 }
-console.log(failed === 0 ? `\n${cases.length} passed` : `\n${failed} of ${cases.length} failed`)
-process.exit(failed === 0 ? 0 : 1)

@@ -26,5 +26,8 @@ Pages lues dans `vendor/deepseek-harness` (commit `fcc0ad4621`) :
 ## Pièges rencontrés
 - Node ≥ 24.9 exigé (ADR 001).
 - `pnpm install` échoue sans accès à `cdn.sheetjs.com`, et l'installation des hooks lefthook échoue dans un sous-module : utiliser `CI=true`.
+- Il faut pnpm 11.28.5 (`packageManager` de dsh) : pnpm 9 ne lit pas les `overrides` de `pnpm-workspace.yaml` et refuse
+  le lockfile (`ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`). Sous Windows, `pnpm` est un fichier `.cmd` : un script Node ne peut
+  pas le lancer par `spawnSync('pnpm')` sans shell (ENOENT).
 - `--patch` se place après le nom du profil, avant les arguments de l'app.
 - `DSH_TELEMETRY_DISABLED` est appliqué au démarrage, pas visible dans `--dump-config`.
