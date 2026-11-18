@@ -25,6 +25,11 @@ transaction ; si la création échouait, le crédit était perdu.
 ## Conséquences
 - Le coût des modèles d'IA reste suivi en interne (activité de l'IA) pour fixer des prix qui le couvrent.
 - Le plugin dsh `akili-credits` compte encore au jeton (ADR 003) : à aligner ou à retirer, décision du fondateur.
-- La documentation de SasPay présente des écarts (réponse enveloppée ou non, bac à sable « bientôt ») :
-  le client accepte les deux formes ; à revérifier avec SasPay avant la mise en vente.
+- La documentation de SasPay présente des écarts (réponse enveloppée ou non ; deux formes de charge utile de webhook) :
+  le client accepte les deux formes de réponse et n'utilise pas le contenu du webhook. Le webhook ne désigne aucune session
+  de paiement : il déclenche, après la réponse, la vérification de tous les paiements ouverts. Les sessions sont créées avec
+  `expires_at` (48 h) ; un paiement fermé de notre côté reste revérifiable.
+- Relu le 2026-11-18 (docs.saspay.me) : RDC documentée (CD, CDF, réseaux Airtel Congo, Orange Congo, Vodacom Congo), carte
+  Visa/Mastercard en USD, bac à sable `https://sandbox-api.saspay.me/api/v1`. Restent à confirmer avec SasPay : l'activation
+  de ces réseaux sur notre compte marchand et le chemin `GET /checkout-sessions/{id}/status/` (à tester en bac à sable).
 - Explication simple : [`docs/guides/credits.md`](../guides/credits.md).

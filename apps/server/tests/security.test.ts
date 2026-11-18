@@ -89,6 +89,15 @@ describe('abuse and injection', () => {
     expect(codes.slice(30)).toEqual([429, 429])
   })
 
+  it('keeps the AI limit when a query string is added to the address', async () => {
+    t = await createTestApp()
+    const o = await readyOrg(t)
+    const sid = (await o.call('POST', '/api/sessions', { title: 'x' })).json().session.id
+    const codes: number[] = []
+    for (let i = 0; i < 32; i++) codes.push((await o.call('POST', `/api/sessions/${sid}/messages?x=${i}`, { text: '/solde' })).statusCode)
+    expect(codes.slice(30)).toEqual([429, 429])
+  })
+
   it('treats SQL and markup in inputs as plain text', async () => {
     t = await createTestApp()
     const o = await readyOrg(t)

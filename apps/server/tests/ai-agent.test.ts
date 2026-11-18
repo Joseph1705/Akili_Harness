@@ -52,6 +52,23 @@ describe('rule 5: nothing leaves without activation and consent', () => {
       expect(deepseek!.requests).toHaveLength(0)
     } finally { await local.close() }
   })
+
+  it('gives a "local" model hosted outside our network nothing without consent, and only pseudonymised text with it', async () => {
+    const local = await startFakeOpenAi()
+    try {
+      const { o, ask } = await setup({ ANTHROPIC_API_KEY: '', DEEPSEEK_API_KEY: '', AKILI_LOCAL_MODEL_URL: local.url, AKILI_LOCAL_MODEL_HEAVY: 'outside-model', AKILI_LOCAL_MODEL_EXTERNAL: '1' })
+      local.chat = () => ({ content: 'Réponse.' })
+      await enable(o, false)
+      expect((await ask('Où en est Tshala Logistique SARL (NIF A0987654K) ?')).json().reply.text).toMatch(/consentement/)
+      await enable(o, true, { mode: 'local' })
+      expect((await ask('Bonjour')).json().reply.text).toMatch(/mode local/i)
+      expect(local.requests).toHaveLength(0)
+      await enable(o, true)
+      await ask('Où en est Tshala Logistique SARL (NIF A0987654K, comptabilite@tshala-logistique.example) ?')
+      expect(local.requests.length).toBeGreaterThan(0)
+      expect(leaked(local.requests, IDENTIFIERS)).toEqual([])
+    } finally { await local.close() }
+  })
 })
 
 describe('agent execution', () => {

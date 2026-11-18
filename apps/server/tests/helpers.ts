@@ -83,6 +83,15 @@ export async function createTestApp(overrides: Record<string, string> = {}): Pro
   }
 }
 
+/** Polls until `check` holds (work the server finishes after answering, e.g. after a webhook), or fails after `ms`. */
+export async function eventually(check: () => Promise<boolean>, ms = 15_000): Promise<void> {
+  const until = Date.now() + ms
+  while (!(await check())) {
+    if (Date.now() > until) throw new Error('condition not met in time')
+    await new Promise(resolve => setTimeout(resolve, 50))
+  }
+}
+
 /** Request a code and log in; returns the session cookie header value. */
 export async function login(t: TestContext, email: string): Promise<string> {
   const req = await t.app.inject({ method: 'POST', url: '/api/auth/request-code', headers: { origin: ORIGIN }, payload: { email } })

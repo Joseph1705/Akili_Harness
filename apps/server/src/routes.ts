@@ -33,7 +33,11 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('onRequest', async (request) => {
     // Webhooks come from providers' servers, not from a browser: they prove themselves by signature instead.
     const webhook = request.url.startsWith('/api/webhooks/')
-    if (webhook) return
+    if (webhook) {
+      // An address that floods the webhooks is cut off before any signature check or database write.
+      if (!limiter.take(`webhook:${request.ip}`, 300, 60_000)) throw tooMany()
+      return
+    }
     if (!limiter.take(`api:${request.ip}`, 1500, 5 * 60_000)) throw tooMany()
     if (UNSAFE.has(request.method) && request.headers.origin !== config.publicOrigin) {
       throw forbidden('Requête refusée (origine non autorisée).')
@@ -48,9 +52,11 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       }
     }
     // Costly endpoints: per organization (uploads) and per person (questions to the AI).
+    // The path is compared without its query string, which the router ignores too.
     if (request.method === 'POST' && request.org) {
-      if ((request.url === '/api/documents' || request.url === '/api/knowledge') && !limiter.take(`upload:${request.org.id}`, 120, 10 * 60_000)) throw tooMany()
-      if (/^\/api\/sessions\/[0-9a-f-]{36}\/messages$/.test(request.url) && !limiter.take(`ai:${request.user!.id}`, 30, 60_000)) throw tooMany()
+      const path = request.url.split('?')[0]!
+      if ((path === '/api/documents' || path === '/api/knowledge') && !limiter.take(`upload:${request.org.id}`, 120, 10 * 60_000)) throw tooMany()
+      if (/^\/api\/sessions\/[0-9a-f-]{36}\/messages$/.test(path) && !limiter.take(`ai:${request.user!.id}`, 30, 60_000)) throw tooMany()
     }
   })
 

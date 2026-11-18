@@ -8,29 +8,30 @@
 import { lookup as dnsLookup, type LookupAddress } from 'node:dns'
 import http from 'node:http'
 import https from 'node:https'
-import { isIP, type LookupFunction } from 'node:net'
+import { BlockList, isIP, type LookupFunction } from 'node:net'
 
 export class BlockedDestination extends Error {}
-
-function ipv4ToInt(ip: string): number {
-  return ip.split('.').reduce((n, part) => (n << 8) + Number(part), 0) >>> 0
-}
 
 const V4_BLOCKED: Array<[string, number]> = [
   ['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12],
   ['192.0.0.0', 24], ['192.168.0.0', 16], ['198.18.0.0', 15], ['224.0.0.0', 4], ['240.0.0.0', 4],
 ]
+// IPv6 ranges that are internal, or that carry an IPv4 address a gateway could route inward
+// (IPv4-compatible, NAT64, 6to4, Teredo). IPv4-mapped forms (::ffff:a.b.c.d, ::ffff:7f00:1…) are
+// checked against the IPv4 ranges by BlockList itself, whatever their spelling.
+const V6_BLOCKED: Array<[string, number]> = [
+  ['::', 96], ['64:ff9b::', 96], ['64:ff9b:1::', 48], ['100::', 64], ['2001::', 32], ['2001:db8::', 32], ['2002::', 16],
+  ['fc00::', 7], ['fe80::', 10], ['fec0::', 10], ['ff00::', 8],
+]
+const BLOCKED = new BlockList()
+for (const [base, bits] of V4_BLOCKED) BLOCKED.addSubnet(base, bits, 'ipv4')
+for (const [base, bits] of V6_BLOCKED) BLOCKED.addSubnet(base, bits, 'ipv6')
 
+/** True for an address we must never connect to on a user's behalf (anything that is not an IP is refused too). */
 export function isPrivateAddress(ip: string): boolean {
-  if (isIP(ip) === 4) {
-    const n = ipv4ToInt(ip)
-    return V4_BLOCKED.some(([base, bits]) => (n >>> (32 - bits)) === (ipv4ToInt(base) >>> (32 - bits)))
-  }
-  const v6 = ip.toLowerCase()
-  if (v6 === '::' || v6 === '::1') return true
-  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(v6)
-  if (mapped) return isPrivateAddress(mapped[1]!)
-  return /^(?:fc|fd)/.test(v6) || /^fe[89ab]/.test(v6) || /^ff/.test(v6)
+  const family = isIP(ip)
+  if (family === 0) return true
+  return BLOCKED.check(ip, family === 4 ? 'ipv4' : 'ipv6')
 }
 
 export interface SafeResponse { status: number; headers: http.IncomingHttpHeaders; body: Buffer }

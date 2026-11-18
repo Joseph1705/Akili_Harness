@@ -1,7 +1,8 @@
 /**
  * SasPay client (https://docs.saspay.me, read 2026-11-17). Only operations the official documentation
  * and OpenAPI file describe are used:
- *   POST /checkout-sessions/              hosted payment page (mobile money Airtel/Orange/Vodacom in CDF, card in USD)
+ *   POST /checkout-sessions/              hosted payment page (catalogue, read 2026-11-18: RDC networks airtel_cd,
+ *                                         orange_cd, vodacom_cd in CDF; `card` Visa/Mastercard in USD only)
  *   GET  /checkout-sessions/{id}/         session details (amount, currency, status)
  *   GET  /checkout-sessions/{id}/status/  status re-checked with the gateway: PAID + transaction_status SUCCESS
  * Webhooks: HMAC-SHA256 of "{X-Webhook-Timestamp}.{raw body}" with the webhook signing secret,
@@ -73,6 +74,8 @@ export function createSasPay(config: SasPayConfig, fetchImpl: typeof fetch = fet
     async createCheckoutSession(input: {
       amountCents: number; currency: string; customerEmail: string; customerName: string
       description: string; returnUrl: string; metadata: Record<string, string>; country?: string
+      /** When SasPay stops accepting payment on this session (OpenAPI: `expires_at`, string, date-time). */
+      expiresAt?: Date
     }): Promise<CheckoutSession> {
       const session = await call<CheckoutSession>('POST', '/checkout-sessions/', {
         amount: centsToDecimal(input.amountCents),
@@ -83,6 +86,7 @@ export function createSasPay(config: SasPayConfig, fetchImpl: typeof fetch = fet
         return_url: input.returnUrl,
         metadata: input.metadata,
         ...(input.country ? { country: input.country } : {}),
+        ...(input.expiresAt ? { expires_at: input.expiresAt.toISOString().replace(/\.\d{3}Z$/, 'Z') } : {}),
       })
       if (!session.id || !session.checkout_url) throw new SasPayError(502, 'Réponse SasPay incomplète (id ou checkout_url manquant).')
       return session

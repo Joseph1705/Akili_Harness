@@ -113,6 +113,10 @@ avant que la moindre donnée parte vers un fournisseur (règle 5).
 
 1. Menu **Administration** › Paquets et prix : fixer le prix de chaque paquet, puis l'activer (un paquet sans prix ne peut
    pas l'être). Fonctionnement des crédits : [`credits.md`](credits.md).
-2. Faire un achat réel du plus petit paquet et vérifier que les crédits arrivent une seule fois.
+2. Demander à SasPay d'activer, sur notre compte marchand, les réseaux de la RDC (Airtel Congo, Orange Congo,
+   Vodacom Congo, en CDF) et la carte (USD). Tester d'abord en bac à sable :
+   `SASPAY_BASE_URL=https://sandbox-api.saspay.me/api/v1` avec une clé `sk_test_…` (c'est l'adresse qui choisit
+   l'environnement, pas la clé). Puis, sur le vrai service, faire un achat réel du plus petit paquet et vérifier que
+   les crédits arrivent une seule fois.
 3. Vérifier le coût réel de l'IA par document dans **Administration** › Coûts IA et évaluations avant de figer les prix.
 4. Les factures portent « Document non fiscal » tant que l'intégration DGI n'est pas validée (règle 8).

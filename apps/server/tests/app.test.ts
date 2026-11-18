@@ -60,6 +60,20 @@ describe('server foundation', () => {
     expect(loadConfig({ ...prod, AKILI_PUBLIC_ORIGIN: 'http://203.0.113.5', AKILI_ALLOW_HTTP: '1' }).cookieSecure).toBe(false)
   })
 
+  it('treats a "local" model as external unless it runs on our own network', () => {
+    const local = (url: string, flag?: string) => loadConfig({ ...prod, AKILI_LOCAL_MODEL_URL: url, AKILI_LOCAL_MODEL_HEAVY: 'm', ...(flag ? { AKILI_LOCAL_MODEL_EXTERNAL: flag } : {}) }).ai.local!.external
+    expect(local('https://api.mistral.ai/v1')).toBe(true)
+    expect(local('https://llm.entreprise.example/v1')).toBe(true)
+    expect(local('http://203.0.113.9:11434/v1')).toBe(true)
+    expect(local('http://ollama:11434/v1')).toBe(false)
+    expect(local('http://127.0.0.1:11434/v1')).toBe(false)
+    expect(local('http://192.168.1.20:11434/v1')).toBe(false)
+    // The operator may declare it either way.
+    expect(local('https://llm.entreprise.example/v1', '0')).toBe(false)
+    expect(local('http://ollama:11434/v1', '1')).toBe(true)
+    expect(() => local('http://ollama:11434/v1', 'yes')).toThrow(/AKILI_LOCAL_MODEL_EXTERNAL/)
+  })
+
   it('refuses a partial SMTP configuration', () => {
     expect(() => loadConfig({ NODE_ENV: 'development', DATABASE_URL: 'postgresql://x@db/x', AKILI_DATA_DIR: '/tmp/akili-x', SMTP_HOST: 'smtp.gmail.com' })).toThrow(/SMTP_USER/)
   })

@@ -76,9 +76,11 @@ L'interface (`apps/web`) est une application React servie par le même serveur ;
 2. Le client paie sur SasPay (mobile money ou carte).
 3. Les crédits ne sont ajoutés qu'après `GET /checkout-sessions/{id}/status/` : `PAID`, transaction `SUCCESS`,
    même montant, même devise. Clé `payment:<id>` : jamais deux fois.
-4. Le webhook (`POST /api/webhooks/saspay`, signature HMAC-SHA256, fenêtre de 300 s) ne fait que déclencher
-   cette vérification. La page de retour aussi. Le worker revérifie les paiements ouverts toutes les 3 minutes
-   pendant 72 heures.
+4. Le webhook (`POST /api/webhooks/saspay`, signature HMAC-SHA256, fenêtre de 300 s) répond tout de suite et
+   déclenche cette vérification en arrière-plan (il ne désigne aucune session). La page de retour la déclenche aussi.
+   Le worker revérifie les paiements ouverts toutes les 3 minutes, les plus récents d'abord. Les sessions SasPay
+   expirent après 48 h (`expires_at`) ; après 72 h, un dernier contrôle précède la fermeture de notre côté, et un
+   paiement fermé reste revérifiable : de l'argent encaissé par SasPay est toujours crédité.
 5. Sans `SASPAY_API_KEY` : achat refusé avec un message, jamais simulé.
 
 ### 4. Une réponse d'agent (harness IA)

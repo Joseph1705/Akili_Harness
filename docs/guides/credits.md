@@ -33,8 +33,10 @@ du document ni du modèle d'IA utilisé.
 ## Obtenir des crédits
 
 1. **À l'inscription** : chaque nouvelle organisation reçoit des crédits d'essai (10 par défaut, réglable par la plateforme).
-2. **Achat en ligne** : écran **Crédits**, choisir un paquet, payer sur la page SasPay par mobile money
-   (Airtel Money, Orange Money, M-Pesa de Vodacom, en francs congolais) ou par carte bancaire (en dollars).
+2. **Achat en ligne** : écran **Crédits**, choisir un paquet, payer sur la page SasPay par mobile money en francs
+   congolais (Airtel Congo, Orange Congo, Vodacom Congo) ou par carte Visa ou Mastercard en dollars. Ces moyens
+   viennent du catalogue publié par SasPay (consulté le 18/11/2026) ; leur activation sur notre compte marchand
+   est à confirmer avec SasPay avant la première vente.
 3. **Par l'équipe de la plateforme** : allocation (geste commercial, paiement reçu autrement), avec un motif écrit.
 
 Seuls le propriétaire et les administrateurs d'une organisation peuvent acheter des crédits.
@@ -51,7 +53,8 @@ puis de les activer. Un paquet sans prix ne peut pas être activé.
   est réussi, pour le bon montant et la bonne devise.
 - Revenir sur la page de confirmation ne prouve rien et n'ajoute rien.
 - Si SasPay prévient plusieurs fois du même paiement, les crédits ne sont ajoutés qu'une fois.
-- Les paiements restés en attente sont revérifiés automatiquement pendant 72 heures.
+- Les paiements en attente sont revérifiés automatiquement. Une session de paiement SasPay reste ouverte 48 heures ;
+  un paiement réellement encaissé par SasPay est toujours crédité, même s'il est confirmé tard.
 - Si SasPay n'est pas configuré, l'achat en ligne est refusé avec un message clair : on ne fait jamais semblant.
 
 ## Corriger une erreur

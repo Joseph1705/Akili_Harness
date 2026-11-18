@@ -162,7 +162,7 @@ function Payments() {
               <td className="small">{p.package_name} · {p.credits}</td>
               <td><span className={`badge ${p.status === 'succeeded' ? 'green' : p.status === 'pending' ? 'alert' : p.status === 'failed' ? 'reject' : 'neutral'}`}>{p.status}</span><div className="tiny muted mono">{p.provider_status ?? ''} {p.provider_reference ?? ''}</div>{p.failure_reason && <div className="tiny muted">{p.failure_reason}</div>}</td>
               <td className="right mono">{money(p.amount_cents, p.currency)}</td>
-              <td className="right">{p.status === 'pending' && <button className="btn small" onClick={async () => { try { await api.post(`/api/platform/payments/${p.id}/verify`); toast('Vérifié auprès de SasPay.'); await load() } catch (err) { toast(err instanceof ApiError ? err.message : 'Erreur.', 'err') } }}>Vérifier</button>}</td></tr>
+              <td className="right">{['pending', 'expired', 'cancelled'].includes(p.status) && <button className="btn small" onClick={async () => { try { await api.post(`/api/platform/payments/${p.id}/verify`); toast('Vérifié auprès de SasPay.'); await load() } catch (err) { toast(err instanceof ApiError ? err.message : 'Erreur.', 'err') } }}>Vérifier</button>}</td></tr>
           ))}</tbody></table>
       </div>
       <div className="card"><div className="card-head"><b>Notifications SasPay reçues</b></div>

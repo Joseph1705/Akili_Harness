@@ -20,13 +20,15 @@ export interface FakeSasPay {
   /** Respond wrapped in {success, data} (quickstart style) instead of bare (OpenAPI style). */
   wrapped: boolean
   failCreate: boolean
+  /** Delay before answering status and session reads, like a slow gateway. */
+  delayMs: number
   pay(sessionId: string, opts?: { amount?: string }): void
   close(): Promise<void>
 }
 
 export async function startFakeSasPay(): Promise<FakeSasPay> {
   const fake: FakeSasPay = {
-    url: '', apiKey: 'sk_test_fake_key', sessions: new Map(), requests: [], wrapped: false, failCreate: false,
+    url: '', apiKey: 'sk_test_fake_key', sessions: new Map(), requests: [], wrapped: false, failCreate: false, delayMs: 0,
     pay(id, opts = {}) {
       const s = fake.sessions.get(id)!
       s.status = 'PAID'; s.transaction_status = 'SUCCESS'; s.transaction_id = randomUUID(); s.transaction_reference = `TXN-${s.slug}`
@@ -34,9 +36,13 @@ export async function startFakeSasPay(): Promise<FakeSasPay> {
     },
     close: () => new Promise(resolve => server.close(() => resolve())),
   }
-  const send = (res: import('node:http').ServerResponse, status: number, body: unknown) => {
+  const answer = (res: import('node:http').ServerResponse, status: number, body: unknown) => {
     res.writeHead(status, { 'content-type': 'application/json' })
     res.end(JSON.stringify(fake.wrapped && status < 400 ? { success: true, data: body, code: status } : body))
+  }
+  const send = (res: import('node:http').ServerResponse, status: number, body: unknown) => {
+    if (fake.delayMs > 0 && res.req.method === 'GET') setTimeout(() => answer(res, status, body), fake.delayMs)
+    else answer(res, status, body)
   }
   const server: Server = createServer((req, res) => {
     let raw = ''

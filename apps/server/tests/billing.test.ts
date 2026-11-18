@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { afterEach, describe, expect, it } from 'vitest'
 import { signWebhook } from '../src/billing/saspay.js'
 import { reconcilePayments } from '../src/billing/payments.js'
-import { as, createTestApp, login, onboardedOwner, ORIGIN, type TestContext } from './helpers.js'
+import { as, createTestApp, eventually, login, onboardedOwner, ORIGIN, type TestContext } from './helpers.js'
 import { startFakeSasPay, type FakeSasPay } from './fakes/saspay.js'
 
 let t: TestContext | undefined
@@ -42,6 +42,62 @@ async function webhook(body: object, opts: { secret?: string; timestamp?: number
 }
 
 const balance = async (call: ReturnType<typeof as>) => (await call('GET', '/api/credits')).json().balance as number
+
+const purchases = async (call: ReturnType<typeof as>) => (await call('GET', '/api/billing/purchases')).json().purchases as Array<{ id: string; status: string }>
+
+describe('payments SasPay confirms late', () => {
+  it('asks SasPay to close each checkout session after 48 hours', async () => {
+    const { owner, packageId } = await setup()
+    const before = Date.now()
+    await buy(owner.call, packageId)
+    const sent = sas!.requests.find(r => r.method === 'POST')!.body as { expires_at?: string }
+    const expires = Date.parse(sent.expires_at ?? '')
+    expect(expires - before).toBeGreaterThanOrEqual(47 * 3_600_000)
+    expect(expires - before).toBeLessThanOrEqual(49 * 3_600_000)
+  })
+
+  it('checks with SasPay one last time before closing a payment on our side, and credits it when paid', async () => {
+    const { owner, packageId } = await setup()
+    const purchase = (await buy(owner.call, packageId)).json().purchase
+    await t!.db.run("UPDATE payments SET created_at = now() - interval '80 hours' WHERE id = ?", purchase.id)
+    sas!.pay([...sas!.sessions.keys()][0]!)
+    await reconcilePayments(t!.app)
+    expect(await balance(owner.call)).toBe(100)
+    expect((await purchases(owner.call))[0]!.status).toBe('succeeded')
+  })
+
+  it('credits a payment closed on our side when SasPay later reports it paid', async () => {
+    const { owner, packageId } = await setup()
+    const purchase = (await buy(owner.call, packageId)).json().purchase
+    await t!.db.run("UPDATE payments SET created_at = now() - interval '80 hours' WHERE id = ?", purchase.id)
+    await reconcilePayments(t!.app) // SasPay still says PENDING: closed on our side
+    expect((await purchases(owner.call))[0]!.status).toBe('expired')
+    sas!.pay([...sas!.sessions.keys()][0]!)
+    expect((await owner.call('POST', `/api/billing/purchases/${purchase.id}/verify`)).json().purchase.status).toBe('succeeded')
+    expect(await balance(owner.call)).toBe(100)
+  })
+
+  it('finds the paid session among many abandoned ones', async () => {
+    const { owner, packageId } = await setup()
+    for (let i = 0; i < 60; i++) await buy(owner.call, packageId)
+    const paid = (await buy(owner.call, packageId)).json().purchase
+    const row = (await t!.db.get<{ provider_session_id: string }>('SELECT provider_session_id FROM payments WHERE id = ?', paid.id))!
+    sas!.pay(row.provider_session_id)
+    await reconcilePayments(t!.app)
+    expect(await balance(owner.call)).toBe(100)
+  })
+
+  it('answers the SasPay webhook at once and checks the payments afterwards', async () => {
+    const { owner, packageId } = await setup()
+    await buy(owner.call, packageId)
+    sas!.pay([...sas!.sessions.keys()][0]!)
+    sas!.delayMs = 3000
+    const started = Date.now()
+    expect((await webhook({ event: 'transaction.success', data: { status: 'SUCCESS' } })).statusCode).toBe(200)
+    expect(Date.now() - started).toBeLessThan(1500)
+    await eventually(async () => (await balance(owner.call)) === 100)
+  })
+})
 
 describe('credit packages', () => {
   it('lists only active packages to organizations and refuses activation without a price', async () => {
@@ -92,6 +148,13 @@ describe('buying credits with SasPay', () => {
     expect((await owner.call('GET', '/api/billing/purchases')).json().purchases[0]).toMatchObject({ status: 'succeeded' })
   })
 
+  it("names the payment methods as SasPay's catalogue does for the DRC", async () => {
+    const { owner } = await setup()
+    expect((await owner.call('GET', '/api/billing/status')).json()).toEqual({
+      online: true, provider: 'SasPay', methods: ['Airtel Congo (CDF)', 'Orange Congo (CDF)', 'Vodacom Congo (CDF)', 'Carte Visa ou Mastercard (USD)'],
+    })
+  })
+
   it('accepts the wrapped {success, data} response form too', async () => {
     const { owner, packageId } = await setup()
     sas!.wrapped = true
@@ -110,6 +173,15 @@ describe('buying credits with SasPay', () => {
     const unsigned = await t!.app.inject({ method: 'POST', url: '/api/webhooks/saspay', payload: '{"event":"transaction.success"}', headers: { 'content-type': 'application/json' } })
     expect(unsigned.statusCode).toBe(403)
     expect(await balance(owner.call)).toBe(0)
+  })
+
+  it('keeps anonymous callers of the webhook from filling the database or flooding it', async () => {
+    await setup()
+    const codes: number[] = []
+    for (let i = 0; i < 301; i++) codes.push((await webhook({ event: 'transaction.success', data: {} }, { secret: 'wrong' })).statusCode)
+    expect(codes.slice(0, 300).every(c => c === 403)).toBe(true)
+    expect(codes[300]).toBe(429)
+    expect((await t!.db.get<{ n: number }>('SELECT count(*) AS n FROM payment_events'))!.n).toBe(0)
   })
 
   it('credits nothing when SasPay reports a different amount', async () => {

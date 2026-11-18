@@ -1,7 +1,9 @@
 /** Server configuration from environment variables. Misconfiguration fails at start-up, before serving anyone. */
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { randomBytes } from 'node:crypto'
+import { isIP } from 'node:net'
 import { join, resolve } from 'node:path'
+import { isPrivateAddress } from './security/net.js'
 
 export interface SmtpConfig {
   host: string
@@ -64,8 +66,11 @@ export interface AiConfig {
   anthropic: ModelEndpoint | undefined
   /** DeepSeek's OpenAI-compatible API (offer Entrepreneur individuel). */
   deepseek: (ModelEndpoint & { baseUrl: string }) | undefined
-  /** A model on our own or the customer's machine (Ollama or any OpenAI-compatible server): no data leaves. */
-  local: { baseUrl: string; apiKey: string | undefined; models: { light: string; heavy: string } } | undefined
+  /**
+   * A model on our own or the customer's machine (Ollama or any OpenAI-compatible server). `external` is true when
+   * its address is outside our network: it then needs the organization's consent and only receives pseudonymised text.
+   */
+  local: { baseUrl: string; apiKey: string | undefined; models: { light: string; heavy: string }; external: boolean } | undefined
   /** Embeddings for knowledge search (OpenAI-compatible /embeddings). `external` providers need consent. */
   embeddings: { baseUrl: string; apiKey: string | undefined; model: string; external: boolean } | undefined
   /** Response cache lifetime. 0 disables the cache. */
@@ -110,6 +115,7 @@ function readAi(env: NodeJS.ProcessEnv): AiConfig {
     local: localUrl ? {
       baseUrl: localUrl, apiKey: env.AKILI_LOCAL_MODEL_KEY?.trim() || undefined,
       models: { light: env.AKILI_LOCAL_MODEL_LIGHT?.trim() || env.AKILI_LOCAL_MODEL_HEAVY!.trim(), heavy: env.AKILI_LOCAL_MODEL_HEAVY!.trim() },
+      external: localModelIsExternal(env, localUrl),
     } : undefined,
     embeddings: embeddingsUrl ? {
       baseUrl: embeddingsUrl, apiKey: env.AKILI_EMBEDDINGS_KEY?.trim() || undefined, model: env.AKILI_EMBEDDINGS_MODEL!.trim(),
@@ -117,6 +123,21 @@ function readAi(env: NodeJS.ProcessEnv): AiConfig {
     } : undefined,
     cacheTtlHours: intIn(env.AKILI_AI_CACHE_HOURS, 24, 0, 24 * 30, 'AKILI_AI_CACHE_HOURS'),
   }
+}
+
+/**
+ * Rule 5: a "local" model may skip consent and pseudonymisation only when it really runs on our network:
+ * a loopback or private address, or a one-word host name (a container next to ours, e.g. `ollama`).
+ * Any other address is an external provider, unless the operator declares otherwise (AKILI_LOCAL_MODEL_EXTERNAL).
+ */
+function localModelIsExternal(env: NodeJS.ProcessEnv, raw: string): boolean {
+  const declared = env.AKILI_LOCAL_MODEL_EXTERNAL?.trim()
+  if (declared === '0') return false
+  if (declared === '1') return true
+  if (declared) fail('AKILI_LOCAL_MODEL_EXTERNAL', 'must be 0 (on our network) or 1 (external)')
+  const host = new URL(raw).hostname.replace(/^\[|\]$/g, '')
+  if (isIP(host)) return !isPrivateAddress(host)
+  return !(host === 'localhost' || !host.includes('.'))
 }
 
 function readConnectors(env: NodeJS.ProcessEnv): ConnectorConfig {

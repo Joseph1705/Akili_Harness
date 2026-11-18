@@ -31,8 +31,8 @@ export async function enqueue(db: Db, orgId: string, type: JobType, refId: strin
 export async function runOneJob(app: FastifyInstance): Promise<boolean> {
   const { db } = app.deps
   const job = await db.get<{ id: string; org_id: string; type: string; ref_id: string; attempts: number }>(`UPDATE jobs SET status = 'running', attempts = attempts + 1
-    WHERE id = (SELECT id FROM jobs WHERE status = 'pending' AND run_after <= now() ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED)
-    RETURNING id, org_id, type, ref_id, attempts`)
+    WHERE id = (SELECT id FROM jobs WHERE status = 'pending' AND attempts < ? AND run_after <= now() ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED)
+    RETURNING id, org_id, type, ref_id, attempts`, MAX_ATTEMPTS)
   if (!job) return false
   try {
     const handler = HANDLERS[job.type as JobType]
@@ -45,9 +45,7 @@ export async function runOneJob(app: FastifyInstance): Promise<boolean> {
       failed ? 'failed' : 'pending', String(error).slice(0, 500), 2 ** job.attempts, job.id)
     if (failed) {
       app.log.error({ job: job.id, error: String(error) }, 'job failed')
-      // No credit is ever charged for a document that failed this way (the charge is inside the invoice transaction).
-      await db.run("UPDATE documents SET status = 'failed', error = 'Erreur interne pendant le traitement. Aucun crédit n''a été utilisé. Réessayez ou contactez le support.' WHERE id = ? AND org_id = ? AND status = 'processing'", job.ref_id, job.org_id)
-      await db.run("UPDATE knowledge_documents SET status = 'failed', error = 'Erreur interne pendant l''indexation. Réessayez.' WHERE id = ? AND org_id = ? AND status IN ('processing', 'queued')", job.ref_id, job.org_id)
+      await markWorkFailed(db, job)
     } else if (job.type === 'process_document') {
       // Back in the queue for the retry: a document never stays "processing" while no worker holds it.
       await db.run("UPDATE documents SET status = 'queued' WHERE id = ? AND org_id = ? AND status = 'processing'", job.ref_id, job.org_id)
@@ -56,14 +54,28 @@ export async function runOneJob(app: FastifyInstance): Promise<boolean> {
   return true
 }
 
+/** The document or knowledge entry behind a job that gave up. No credit is ever charged for it (the charge is inside the invoice transaction). */
+async function markWorkFailed(db: Db, job: { org_id: string; ref_id: string }): Promise<void> {
+  await db.run("UPDATE documents SET status = 'failed', error = 'Erreur interne pendant le traitement. Aucun crédit n''a été utilisé. Réessayez ou contactez le support.' WHERE id = ? AND org_id = ? AND status IN ('processing', 'queued')", job.ref_id, job.org_id)
+  await db.run("UPDATE knowledge_documents SET status = 'failed', error = 'Erreur interne pendant l''indexation. Réessayez.' WHERE id = ? AND org_id = ? AND status IN ('processing', 'queued')", job.ref_id, job.org_id)
+}
+
 /** Tests: run until nothing is pending. */
 export async function drainJobs(app: FastifyInstance, limit = 200): Promise<void> {
   for (let i = 0; i < limit && await runOneJob(app); i++) { /* keep going */ }
 }
 
 export async function startWorker(app: FastifyInstance, intervalMs = 500): Promise<{ stop(): void }> {
-  // Jobs left "running" by a crash go back to the queue.
-  await app.deps.db.run("UPDATE jobs SET status = 'pending' WHERE status = 'running'")
+  // Jobs left "running" by a crash go back to the queue while they have attempts left. One that used them all
+  // has probably caused the crash: it is failed, so a single file cannot make the server restart in a loop.
+  const { db } = app.deps
+  const exhausted = await db.all<{ id: string; org_id: string; ref_id: string }>(`UPDATE jobs SET status = 'failed', error = 'Interrompu par un arrêt du serveur à chaque tentative.'
+    WHERE status = 'running' AND attempts >= ? RETURNING id, org_id, ref_id`, MAX_ATTEMPTS)
+  for (const job of exhausted) {
+    app.log.error({ job: job.id }, 'job failed: the server stopped during every attempt')
+    await markWorkFailed(db, job)
+  }
+  await db.run("UPDATE jobs SET status = 'pending' WHERE status = 'running'")
   let running = false
   let lastReconcile = 0
   let lastPurge = 0

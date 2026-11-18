@@ -10,7 +10,7 @@ import { afterAll, afterEach, describe, expect, it } from 'vitest'
 import { signWebhook } from '../src/billing/saspay.js'
 import { shutdownOcr } from '../src/documents/ocr.js'
 import { drainJobs } from '../src/jobs.js'
-import { as, createTestApp, importFixtureClients, login, onboardedOwner, multipart, ORIGIN, documentsDir, type TestContext } from './helpers.js'
+import { as, createTestApp, eventually, importFixtureClients, login, onboardedOwner, multipart, ORIGIN, documentsDir, type TestContext } from './helpers.js'
 import { startFakeSasPay, type FakeSasPay } from './fakes/saspay.js'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -46,7 +46,8 @@ describe('acceptance scenario: 100 credits bought with SasPay, one scanned docum
     const ts = Math.floor(Date.now() / 1000)
     const hook = await t.app.inject({ method: 'POST', url: '/api/webhooks/saspay', payload: raw, headers: { 'content-type': 'application/json', 'x-webhook-timestamp': String(ts), 'x-webhook-signature': signWebhook(raw, SECRET, ts) } })
     expect(hook.statusCode).toBe(200)
-    expect((await call('GET', '/api/credits')).json().balance).toBe(100)
+    // SasPay gets its answer at once; the payment is verified and credited right after.
+    await eventually(async () => (await call('GET', '/api/credits')).json().balance === 100)
 
     // It uploads a scanned document.
     const agent = (await call('POST', '/api/agents', { packId: 'facturation-sous-traitance', name: 'Agent Facturation' })).json().agent

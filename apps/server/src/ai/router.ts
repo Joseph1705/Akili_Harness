@@ -47,7 +47,7 @@ function serverProviders(app: FastifyInstance): Partial<Record<ProviderId, Candi
     found = {}
     if (cfg.anthropic) found.anthropic = { provider: anthropicProvider(cfg.anthropic), models: cfg.anthropic.models }
     if (cfg.deepseek) found.deepseek = { provider: openAiCompatibleProvider('deepseek', cfg.deepseek, true), models: cfg.deepseek.models }
-    if (cfg.local) found.local = { provider: openAiCompatibleProvider('local', cfg.local, false), models: cfg.local.models }
+    if (cfg.local) found.local = { provider: openAiCompatibleProvider('local', cfg.local, cfg.local.external), models: cfg.local.models }
     providerCache.set(cfg, found)
   }
   return found
@@ -69,15 +69,17 @@ export async function aiAccess(app: FastifyInstance, orgId: string, purpose: 'ch
   const consent = (await consentState(db, orgId)).external_model
   const plan = (await db.get<{ plan: 'solo' | 'entreprise' }>('SELECT plan FROM organizations WHERE id = ?', orgId))?.plan ?? 'entreprise'
   const available = serverProviders(app)
+  // The "local" slot counts as ours only when it runs on our network (config.ts); otherwise it is one more external provider.
+  const ownLocal = Boolean(available.local) && !app.deps.config.ai.local?.external
   const preferred: ProviderId[] = settings.mode === 'local' ? ['local'] : plan === 'solo' ? ['deepseek', 'anthropic', 'local'] : ['anthropic', 'deepseek', 'local']
-  const order = preferred.filter(p => available[p] && (p === 'local' || consent))
+  const order = preferred.filter(p => available[p] && ((p === 'local' && ownLocal) || consent) && !(settings.mode === 'local' && !ownLocal))
   const deny = (reason: string): AiAccess => ({ allowed: false, reason, settings, externalConsent: consent, order })
   if (!settings.enabled) return deny("L'intelligence artificielle est désactivée pour votre organisation. Un administrateur peut l'activer dans Paramètres › Intelligence artificielle.")
   if (purpose === 'extraction' && !settings.use_for_extraction) return deny("La lecture des documents par l'IA est désactivée : lecture locale uniquement.")
   if (purpose === 'chat' && !settings.use_for_chat) return deny("L'assistant conversationnel est désactivé pour votre organisation.")
   if (purpose === 'whatsapp' && !settings.whatsapp_drafts) return deny("Les brouillons de réponse WhatsApp par l'IA sont désactivés.")
-  if (settings.mode === 'local' && !available.local) return deny("Le mode local est choisi, mais aucun modèle local n'est installé sur ce serveur.")
-  if (settings.mode === 'external' && !consent && !available.local) return deny("L'organisation n'a pas donné son consentement à l'envoi de données (pseudonymisées) à un fournisseur de modèle externe.")
+  if (settings.mode === 'local' && !ownLocal) return deny("Le mode local est choisi, mais aucun modèle n'est installé sur nos propres serveurs.")
+  if (settings.mode === 'external' && !consent && !ownLocal) return deny("L'organisation n'a pas donné son consentement à l'envoi de données (pseudonymisées) à un fournisseur de modèle externe.")
   if (order.length === 0) return deny("Aucun modèle de langage n'est configuré sur ce serveur.")
   return { allowed: true, reason: null, settings, externalConsent: consent, order }
 }

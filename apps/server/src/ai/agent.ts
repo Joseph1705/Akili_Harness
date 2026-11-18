@@ -60,7 +60,9 @@ export async function runAgent(app: FastifyInstance, input: { org: OrgContext; u
       await run.step('retrieval', 'base de connaissances', 'ok', { found: sources.length, flagged: sources.filter(s => s.flagged).length, titles: sources.map(s => pseudo.mask(s.title)) }, Date.now() - started)
     }
 
-    const tools = await availableTools(app, input.org, agent?.tools ?? [])
+    // A WhatsApp sender is outside the organization: the draft is written from the knowledge base alone,
+    // with no tool that could read invoices, clients, documents or mailboxes on the sender's behalf.
+    const tools = purpose === 'whatsapp' ? [] : await availableTools(app, input.org, agent?.tools ?? [])
     const orgName = (await db.get<{ name: string }>('SELECT name FROM organizations WHERE id = ?', input.org.id))!.name
     const system = composeSystemPrompt(orgName, parts, { today: new Date().toISOString().slice(0, 10), tools: tools.map(t => t.label) })
 

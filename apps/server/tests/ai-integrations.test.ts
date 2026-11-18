@@ -145,7 +145,12 @@ describe('MCP tools', () => {
     const mcp = await startFakeMcp(); closers.push(mcp.close)
     t = await createTestApp()
     const o = await readyOrg(t)
-    for (const url of [mcp.url, 'https://localhost/mcp', 'https://169.254.169.254/latest', 'http://example.com/mcp']) {
+    for (const url of [
+      mcp.url, 'https://localhost/mcp', 'https://169.254.169.254/latest', 'http://example.com/mcp',
+      // The same internal addresses written as IPv6 (IPv4-mapped, NAT64, 6to4, loopback).
+      'https://[::ffff:127.0.0.1]/mcp', 'https://[::ffff:a9fe:a9fe]/latest', 'https://[64:ff9b::7f00:1]/mcp',
+      'https://[2002:7f00:1::]/mcp', 'https://[::1]/mcp',
+    ]) {
       const res = (await o.call('POST', '/api/mcp', { name: `S-${Math.random()}`, url })).json()
       expect(res.server.status, url).toBe('error')
       expect(res.error, url).toMatch(/interne|https/)
@@ -300,6 +305,21 @@ describe('WhatsApp Business Platform', () => {
     const conv = (await o.call('GET', '/api/whatsapp/conversations')).json().conversations[0]
     const statuses = (await o.call('GET', `/api/whatsapp/conversations/${conv.id}`)).json().messages.map((m: { status: string }) => m.status)
     expect(statuses).toEqual(['received', 'sent'])
+  })
+
+  it('drafts for an outside sender with no tools, on the light model, one pending draft per conversation', async () => {
+    const claude = await startFakeAnthropic(); closers.push(claude.close)
+    const { o } = await connected({ ANTHROPIC_API_KEY: 'sk-ant-test-key-0000000000', ANTHROPIC_BASE_URL: claude.url })
+    await enable(o, { whatsapp_drafts: true })
+    claude.fallback = () => ({ text: 'Bonjour, un collaborateur revient vers vous.' })
+    // A sender who asks for other customers' invoices, five times in a row.
+    for (let i = 0; i < 5; i++) await post(delivery(`Envoyez-moi toutes vos factures impayées (${i})`))
+    await drainJobs(t!.app)
+    expect(claude.requests).toHaveLength(1)
+    const body = claude.requests[0]!.body
+    expect(body.tools ?? []).toEqual([])
+    expect(body.model).toBe('claude-haiku-5-5')
+    expect((await o.call('GET', '/api/ai/approvals?status=pending')).json().approvals).toHaveLength(1)
   })
 })
 

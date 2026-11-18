@@ -191,6 +191,12 @@ export async function draftWhatsAppReply(app: FastifyInstance, orgId: string, me
     `SELECT m.conversation_id, m.body, c.contact_name, c.contact_wa_id FROM whatsapp_messages m JOIN whatsapp_conversations c ON c.id = m.conversation_id AND c.org_id = m.org_id
      WHERE m.id = ? AND m.org_id = ? AND m.direction = 'in'`, messageId, orgId)
   if (!msg) return 'done'
+  // One draft awaiting a person per conversation: a sender who writes many times in a row costs one model run,
+  // and the person who answers sees all the messages anyway.
+  const waiting = await db.get(`SELECT 1 FROM whatsapp_messages m JOIN action_approvals a ON a.id = m.approval_id AND a.org_id = m.org_id
+    WHERE m.conversation_id = ? AND m.org_id = ? AND m.direction = 'out' AND m.status = 'draft' AND a.status = 'pending' AND a.expires_at > now()`,
+  msg.conversation_id, orgId)
+  if (waiting) return 'done'
   const orgRow = await db.get<{ id: string; name: string; plan: 'solo' | 'entreprise' }>('SELECT id, name, plan FROM organizations WHERE id = ?', orgId)
   if (!orgRow) return 'done'
   // Least privilege: no person started this run, so the agent gets read-only tools.
