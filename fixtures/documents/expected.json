@@ -1,0 +1,11 @@
+{
+  "_note": "Valeurs attendues pour l'évaluation de la lecture des documents fictifs (règle 4 : données inventées).",
+  "organization": { "name": "Kibala Services SARL", "nif": "A1234567X", "rccm": "CD/LSH/RCCM/21-B-01234", "currency": "USD" },
+  "cases": [
+    { "file": "BC-MWA-2026-044_Mwanga_Bon_de_commande.pdf", "kind": "pdf", "expect": { "client": "Mwanga Logistique SARL", "reference": "BC-MWA-2026-044", "total": "2429.04", "lines": [["3", "450.00"], ["24", "18.50"], ["1", "300.00"]] } },
+    { "file": "Scan_BL-2026-118_Tshala.pdf", "kind": "pdf", "expect": { "client": "Tshala Logistique SARL", "reference": "BL-2026-118", "total": "1542.80", "lines": [["40", "22.00"], ["25", "18.00"]] } },
+    { "file": "Photo_Devis_D-2026-031.jpg", "kind": "jpeg", "expect": { "client": "Bakwanga Mining SARL", "reference": "D-2026-031", "total": "2204.00", "lines": [["60", "25.00"], ["1", "400.00"]] } },
+    { "file": "Commande_Lualaba_BC-LM-0471.docx", "kind": "docx", "expect": { "client": "Lualaba Minerals SARL", "reference": "BC-LM-0471", "total": null, "lines": [["20", "115.00"], ["32", "30.00"]] } },
+    { "file": "Demande_facturation_Kalembe.txt", "kind": "txt", "expect": { "client": "Kalembe Mining SA", "reference": null, "total": null, "lines": [["2", "210.00"], ["1", "150.00"]] } }
+  ]
+}

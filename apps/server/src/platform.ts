@@ -6,6 +6,7 @@
  */
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { randomUUID } from 'node:crypto'
+import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
 import { audit } from './audit.js'
 import { userOf } from './auth/context.js'
@@ -181,4 +182,37 @@ export async function platformRoutes(app: FastifyInstance): Promise<void> {
         FROM payments WHERE status = 'succeeded' GROUP BY currency`),
     }
   })
+
+  /** Our own operating cost of AI (internal; never shown to customers as a price): by day, model and organization. */
+  app.get('/ai', async (request) => {
+    admin(request)
+    const since = "created_at >= now() - interval '30 days'"
+    return {
+      days: await db.all(`SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS day, count(*)::int AS runs,
+        COALESCE(SUM(input_tokens), 0)::bigint AS input_tokens, COALESCE(SUM(output_tokens), 0)::bigint AS output_tokens,
+        COALESCE(SUM(cost_micro_usd), 0)::bigint AS cost_micro_usd, count(*) FILTER (WHERE status IN ('error', 'blocked'))::int AS errors,
+        COALESCE(round(avg(duration_ms)), 0)::int AS avg_ms FROM ai_runs WHERE ${since} GROUP BY 1 ORDER BY 1`),
+      models: await db.all(`SELECT provider, model, count(*)::int AS runs, COALESCE(SUM(cost_micro_usd), 0)::bigint AS cost_micro_usd,
+        COALESCE(SUM(input_tokens + output_tokens), 0)::bigint AS tokens FROM ai_runs WHERE ${since} AND model IS NOT NULL GROUP BY provider, model ORDER BY cost_micro_usd DESC`),
+      orgs: await db.all(`SELECT r.org_id, o.name, count(*)::int AS runs, COALESCE(SUM(r.cost_micro_usd), 0)::bigint AS cost_micro_usd,
+        count(*) FILTER (WHERE r.purpose = 'extraction')::int AS extractions FROM ai_runs r JOIN organizations o ON o.id = r.org_id
+        WHERE r.${since} GROUP BY r.org_id, o.name ORDER BY cost_micro_usd DESC LIMIT 50`),
+      errors: await db.all(`SELECT id, org_id, purpose, provider, model, status, error, created_at FROM ai_runs WHERE ${since} AND status IN ('error', 'blocked')
+        ORDER BY created_at DESC LIMIT 50`),
+      evals: await db.all('SELECT id, org_id, suite, method, cases, score, created_at FROM ai_evals ORDER BY created_at DESC LIMIT 20'),
+    }
+  })
+
+  /** Measure document reading on the fictitious documents (local reading, or an organization's model). */
+  app.post('/evals/extraction', async (request) => {
+    const user = admin(request)
+    const body = z.object({ method: z.enum(['local', 'model']), orgId: z.string().uuid().optional() }).strict().parse(request.body)
+    if (body.method === 'model' && !body.orgId) throw new HttpError(400, 'bad_request', "Choisissez l'organisation dont le modèle est évalué.")
+    const { evaluate } = await import('./ai/evals.js')
+    const result = await evaluate(app, FIXTURES_DIR, body.method, body.orgId ?? null, user.id)
+    await audit(db, { orgId: body.orgId ?? null, userId: user.id }, 'platform.eval_run', 'eval', result.id, { method: body.method, score: result.score })
+    return result
+  })
 }
+
+const FIXTURES_DIR = process.env.AKILI_FIXTURES_DIR ?? fileURLToPath(new URL('../../../fixtures', import.meta.url))

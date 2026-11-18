@@ -147,4 +147,42 @@ export async function orgRoutes(app: FastifyInstance): Promise<void> {
     await audit(db, { orgId: org.id, userId: request.user!.id }, 'member.invited', 'member', body.email.replace(/^(.{2}).*@/, '$1***@'), { role: body.role })
     return { ok: true }
   })
+
+  /** Remove a member (not the owner): access ends at once, every open session of that person in this space is closed. */
+  app.delete('/orgs/current/members/:userId', async (request) => {
+    const org = orgOf(request, CAN.configure)
+    const { userId } = z.object({ userId: z.string().uuid() }).parse(request.params)
+    const changed = await db.run("DELETE FROM memberships WHERE user_id = ? AND org_id = ? AND role <> 'owner'", userId, org.id)
+    if (changed === 0) throw notFound('Membre')
+    await db.run('UPDATE sessions SET current_org_id = NULL WHERE user_id = ? AND current_org_id = ?', userId, org.id)
+    await audit(db, { orgId: org.id, userId: request.user!.id }, 'member.removed', 'member', userId)
+    return { ok: true }
+  })
+
+  /** Everything the organization stored, as JSON (data portability). Files are downloaded one by one. */
+  app.get('/orgs/current/export', async (request, reply) => {
+    const org = orgOf(request, CAN.configure)
+    const all = (sql: string) => db.all(sql, org.id)
+    const data = {
+      exported_at: new Date().toISOString(),
+      organization: await db.get(`SELECT id, kind, name, plan, sector, city, province, currency, rccm, id_nat, nif, address, vat_status, created_at FROM organizations WHERE id = ?`, org.id),
+      members: await all('SELECT u.email, u.first_name, u.last_name, m.role, m.created_at FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.org_id = ?'),
+      clients: await all('SELECT * FROM clients WHERE org_id = ?'),
+      contracts: await all('SELECT * FROM contracts WHERE org_id = ?'),
+      invoices: await all('SELECT * FROM invoices WHERE org_id = ? ORDER BY created_at'),
+      invoice_payments: await all('SELECT * FROM invoice_payments WHERE org_id = ? ORDER BY created_at'),
+      documents: await all('SELECT id, filename, kind, status, report_number, error, invoice_id, created_at, processed_at FROM documents WHERE org_id = ? ORDER BY created_at'),
+      credit_wallet: await db.get('SELECT * FROM credit_wallets WHERE org_id = ?', org.id),
+      credit_transactions: await all('SELECT public_id, type, amount, balance_before, balance_after, operation_key, document_id, invoice_id, payment_reference, reason, created_at FROM credit_transactions WHERE org_id = ? ORDER BY id'),
+      payments: await all('SELECT id, package_name, credits, amount_cents, currency, status, provider_reference, created_at, credited_at FROM payments WHERE org_id = ? ORDER BY created_at'),
+      knowledge: await all('SELECT id, title, filename, version, status, created_at FROM knowledge_documents WHERE org_id = ?'),
+      consents: await all('SELECT type, version, granted, created_at FROM consents WHERE org_id = ? ORDER BY seq'),
+      audit_log: await all('SELECT action, target_type, target_id, detail, created_at FROM audit_log WHERE org_id = ? ORDER BY id'),
+    }
+    await audit(db, { orgId: org.id, userId: request.user!.id }, 'org.exported', 'organization', org.id)
+    return reply.header('content-type', 'application/json; charset=utf-8')
+      .header('content-disposition', `attachment; filename="export-${new Date().toISOString().slice(0, 10)}.json"`)
+      .header('cache-control', 'private, no-store')
+      .send(JSON.stringify(data, null, 2))
+  })
 }

@@ -10,6 +10,7 @@ import { processDocument } from './documents/process.js'
 import { reconcilePayments } from './billing/payments.js'
 import { ingestKnowledge } from './knowledge/store.js'
 import { draftWhatsAppReply } from './connectors/routes.js'
+import { purgeExpired } from './maintenance.js'
 
 export type JobOutcome = 'done' | 'waiting_credits'
 export type JobType = 'process_document' | 'ingest_knowledge' | 'whatsapp_draft'
@@ -65,6 +66,7 @@ export async function startWorker(app: FastifyInstance, intervalMs = 500): Promi
   await app.deps.db.run("UPDATE jobs SET status = 'pending' WHERE status = 'running'")
   let running = false
   let lastReconcile = 0
+  let lastPurge = 0
   const timer = setInterval(async () => {
     if (running) return
     running = true
@@ -72,6 +74,8 @@ export async function startWorker(app: FastifyInstance, intervalMs = 500): Promi
       while (await runOneJob(app)) { /* drain */ }
       // Payments whose webhook was lost are verified with the provider every few minutes.
       if (Date.now() - lastReconcile > 3 * 60_000) { lastReconcile = Date.now(); await reconcilePayments(app) }
+      // Retention: expired secrets and old AI excerpts, every 6 hours.
+      if (Date.now() - lastPurge > 6 * 3600_000) { lastPurge = Date.now(); await purgeExpired(app.deps.db, app.deps.config) }
     } catch (error) { app.log.error({ error: String(error) }, 'worker loop') } finally { running = false }
   }, intervalMs)
   return { stop: () => clearInterval(timer) }

@@ -1,6 +1,7 @@
 /** All API routes, mounted under /api: origin check, session resolution, then each module under its prefix. */
 import type { FastifyInstance } from 'fastify'
-import { forbidden } from './errors.js'
+import { forbidden, HttpError } from './errors.js'
+import { RateLimiter } from './auth/rate-limit.js'
 import { authRoutes } from './auth/routes.js'
 import { resolveSession, SESSION_COOKIE } from './auth/sessions.js'
 import { auditRoutes } from './audit.js'
@@ -24,11 +25,16 @@ export const APP_VERSION = '0.2.0'
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   const { db, config } = app.deps
 
+  // Rate limits per address (DIRECTIVES §7), on top of the stricter ones on login codes, uploads and AI.
+  const limiter = new RateLimiter()
+  const tooMany = () => new HttpError(429, 'rate_limited', 'Trop de requêtes. Patientez un instant puis réessayez.')
+
   // Cross-site request forgery: a state-changing request must come from our own origin.
   app.addHook('onRequest', async (request) => {
     // Webhooks come from providers' servers, not from a browser: they prove themselves by signature instead.
     const webhook = request.url.startsWith('/api/webhooks/')
     if (webhook) return
+    if (!limiter.take(`api:${request.ip}`, 1500, 5 * 60_000)) throw tooMany()
     if (UNSAFE.has(request.method) && request.headers.origin !== config.publicOrigin) {
       throw forbidden('Requête refusée (origine non autorisée).')
     }
@@ -40,6 +46,11 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         request.sessionId = session.sessionId
         request.org = session.org
       }
+    }
+    // Costly endpoints: per organization (uploads) and per person (questions to the AI).
+    if (request.method === 'POST' && request.org) {
+      if ((request.url === '/api/documents' || request.url === '/api/knowledge') && !limiter.take(`upload:${request.org.id}`, 120, 10 * 60_000)) throw tooMany()
+      if (/^\/api\/sessions\/[0-9a-f-]{36}\/messages$/.test(request.url) && !limiter.take(`ai:${request.user!.id}`, 30, 60_000)) throw tooMany()
     }
   })
 

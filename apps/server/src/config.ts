@@ -53,6 +53,8 @@ export interface Config {
   connectors: ConnectorConfig
   /** MCP servers on private networks (self-hosted installs only). Off by default: SSRF protection. */
   mcpAllowPrivate: boolean
+  /** Days AI prompt and answer excerpts are kept in the logs (the counts of each run are kept). */
+  aiLogRetentionDays: number
 }
 
 export interface ModelEndpoint { apiKey: string; baseUrl: string | undefined; models: { light: string; heavy: string } }
@@ -232,5 +234,6 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     ai: readAi(env),
     connectors: readConnectors(env),
     mcpAllowPrivate: env.AKILI_MCP_ALLOW_PRIVATE === '1',
+    aiLogRetentionDays: intIn(env.AKILI_AI_LOG_RETENTION_DAYS, 90, 1, 3650, 'AKILI_AI_LOG_RETENTION_DAYS'),
   }
 }

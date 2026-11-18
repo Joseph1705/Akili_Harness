@@ -61,6 +61,10 @@ export async function buildApp(input: AppDeps): Promise<FastifyInstance> {
     crossOriginEmbedderPolicy: false,
     hsts: input.config.cookieSecure ? { maxAge: 31536000, includeSubDomains: true } : false,
   })
+  // No browser feature the application does not use (camera for photos is taken through the file picker).
+  app.addHook('onSend', async (_request, reply) => {
+    reply.header('permissions-policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()')
+  })
   await app.register(cookie)
   await app.register(multipart, { limits: { fileSize: MAX_UPLOAD_BYTES, files: 10, fields: 10 } })
 
