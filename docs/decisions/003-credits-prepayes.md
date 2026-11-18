@@ -1,6 +1,7 @@
 # 003 — Facturation par crédits prépayés
 
-Date : 2026-11-09 · Statut : proposé · Remplace, pour la facturation, l'abonnement mensuel de la section 4.7
+Date : 2026-11-09 · Statut : remplacé pour l'application par l'ADR 007 (un crédit par document) ; ne vaut plus que
+pour le parcours local `pnpm dsh` (plugin `akili-credits`) · Remplaçait, pour la facturation, l'abonnement mensuel de la section 4.7
 
 ## Contexte
 Le fondateur préfère que les entreprises achètent des crédits et rechargent quand ils sont épuisés, plutôt qu'un abonnement mensuel.
