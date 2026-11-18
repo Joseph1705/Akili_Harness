@@ -40,6 +40,16 @@ Mission : `DIRECTIVES.md`. Conception : `docs/superpowers/specs/2026-11-17-missi
 - Limitation de débit, secrets chiffrés, protection SSRF, conservation limitée des extraits de l'IA,
   export des données d'une organisation, retrait d'un membre, tests de sécurité dédiés.
 - PostgreSQL avec `pgvector` (développement, CI, production).
+- Revue complète de la branche avant la version, corrections testées :
+  - un paiement encaissé par SasPay est toujours crédité, même confirmé tard (sessions de 48 h, dernier contrôle
+    avant fermeture, paiements fermés revérifiables) ; le webhook répond tout de suite et vérifie ensuite ;
+  - les limites d'envoi de documents et de questions à l'IA ne se contournent plus ;
+  - un modèle « local » à une adresse extérieure est traité comme un fournisseur externe (consentement, pseudonymisation) ;
+  - brouillons WhatsApp : aucun outil pour un expéditeur extérieur, petit modèle, un brouillon en attente par conversation ;
+  - un document qui ferait tomber le serveur à chaque tentative est abandonné au lieu de relancer le serveur en boucle ;
+  - protection SSRF étendue aux formes IPv6 des adresses internes ; webhooks limités par adresse ;
+  - le bouton d'évaluation fonctionne en production (documents fictifs livrés dans l'image).
+- Référence technique des crédits et paiements : `docs/credits-technique.md`.
 - Modèle de réglages `.env.example` complet, que le guide de déploiement fait copier.
 - Le lanceur `pnpm dsh` fonctionne sous Windows ; `pnpm smoke` vérifie d'abord que le lanceur démarre dsh.
 

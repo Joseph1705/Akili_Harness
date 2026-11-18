@@ -67,7 +67,8 @@ L'interface (`apps/web`) est une application React servie par le même serveur ;
 - Toute opération passe par `applyCredit` (`billing/wallet.ts`) : verrou `FOR UPDATE` sur le portefeuille,
   idempotence par clé d'opération, refus sous zéro, écriture du registre dans la transaction de l'appelant.
 - Types : `purchase`, `consumption`, `refund`, `admin_allocation`, `admin_correction`. Une erreur se corrige par
-  une écriture inverse. Détail pour non-techniciens : [`guides/credits.md`](guides/credits.md) ; décision : ADR 007.
+  une écriture inverse. Détail pour non-techniciens : [`guides/credits.md`](guides/credits.md) ; tables, routes et
+  exemples : [`credits-technique.md`](credits-technique.md) ; décision : ADR 007.
 
 ### 3. L'achat de crédits (SasPay)
 

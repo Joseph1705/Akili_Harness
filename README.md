@@ -29,7 +29,8 @@ propose les données d'une facture, **une personne vérifie**, **le code calcule
 Aucun appel ne part vers un fournisseur de modèle sans activation de l'IA et consentement de l'organisation.
 Un modèle local (Ollama) est possible : aucune donnée ne sort.
 
-Fonctionnement technique : [`docs/architecture.md`](docs/architecture.md). Décisions : [`docs/decisions/`](docs/decisions/).
+Fonctionnement technique : [`docs/architecture.md`](docs/architecture.md). Crédits et paiements (tables, routes,
+exemples) : [`docs/credits-technique.md`](docs/credits-technique.md). Décisions : [`docs/decisions/`](docs/decisions/).
 
 ## Mettre en ligne
 

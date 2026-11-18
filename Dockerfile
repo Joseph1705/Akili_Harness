@@ -19,10 +19,13 @@ FROM node:24-bookworm-slim AS runtime
 ENV NODE_ENV=production \
     PORT=3000 \
     AKILI_DATA_DIR=/data \
-    AKILI_WEB_DIST=/app/web
+    AKILI_WEB_DIST=/app/web \
+    AKILI_FIXTURES_DIR=/app/fixtures
 WORKDIR /app
 COPY --from=build /out /app/server
 COPY --from=build /src/apps/web/dist /app/web
+# Fictitious documents read by the platform's extraction evaluation (Administration › Coûts IA et évaluations).
+COPY fixtures/documents /app/fixtures/documents
 RUN mkdir -p /data && chown node:node /data
 USER node
 EXPOSE 3000
