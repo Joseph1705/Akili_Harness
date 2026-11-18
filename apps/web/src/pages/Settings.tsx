@@ -1,23 +1,32 @@
-/** Settings: company, data and consents, team, clients and contracts, security (devices), audit log. */
+/** Settings: company, data and consents, AI, connectors, MCP tools, team, clients and contracts, security, audit log. */
 import { useEffect, useRef, useState } from 'react'
-import { ago, api, ApiError, money } from '../api'
+import { useSearchParams } from 'react-router-dom'
+import { ago, api, ApiError, download, money } from '../api'
 import { Shell } from '../components/Shell'
 import { Icon } from '../icons'
 import { can, ROLE_LABEL, useSession, type Role } from '../state'
+import { AiSettings, ConnectorSettings, McpSettings } from './SettingsExtra'
 
-type Tab = 'company' | 'data' | 'team' | 'clients' | 'security' | 'audit'
+type Tab = 'company' | 'data' | 'ia' | 'connecteurs' | 'mcp' | 'team' | 'clients' | 'security' | 'audit'
 
 export function Settings() {
   const { me } = useSession()
   const admin = can.configure(me?.org?.role)
-  const tabs: Array<[Tab, string]> = [['company', 'Entreprise'], ['data', 'Données et consentements'], ['team', 'Équipe'], ['clients', 'Clients et contrats'], ['security', 'Sécurité'], ...(admin ? [['audit', 'Journal d\'audit'] as [Tab, string]] : [])]
-  const [tab, setTab] = useState<Tab>('company')
+  const [params, setParams] = useSearchParams()
+  const tabs: Array<[Tab, string]> = [['company', 'Entreprise'], ['data', 'Données et consentements'], ['ia', 'Intelligence artificielle'], ['connecteurs', 'Connecteurs'],
+    ...(admin ? [['mcp', 'Outils MCP'] as [Tab, string]] : []), ['team', 'Équipe'], ['clients', 'Clients et contrats'], ['security', 'Sécurité'], ...(admin ? [['audit', 'Journal d\'audit'] as [Tab, string]] : [])]
+  const asked = params.get('onglet') as Tab | null
+  const [tab, setTabState] = useState<Tab>(asked && tabs.some(([k]) => k === asked) ? asked : 'company')
+  const setTab = (t: Tab) => { setTabState(t); setParams({ onglet: t }, { replace: true }) }
   return (
     <Shell crumb="Compte" title="Paramètres">
       <div className="page">
-        <div className="tabs" role="tablist">{tabs.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{l}</button>)}</div>
+        <div className="tabs" role="tablist" style={{ flexWrap: 'wrap' }}>{tabs.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{l}</button>)}</div>
         {tab === 'company' && <Company />}
         {tab === 'data' && <DataConsents />}
+        {tab === 'ia' && <AiSettings />}
+        {tab === 'connecteurs' && <ConnectorSettings />}
+        {tab === 'mcp' && <McpSettings />}
         {tab === 'team' && <Team />}
         {tab === 'clients' && <Clients />}
         {tab === 'security' && <Security />}
@@ -90,11 +99,13 @@ function DataConsents() {
       <div><b>Mode de données : {me?.org?.data_mode === 'souverain' ? 'Souverain' : 'Standard'}</b><div className="small muted">Vos fichiers sont chiffrés sur ce serveur ({me?.app.hostingLabel}), avec une clé propre à votre organisation.</div></div>
       <div className="card card-pad" style={{ background: 'var(--surface-2)' }}>
         <div className="spread">
-          <div><b>Fournisseur de modèle externe — {provider}</b><div className="small muted">Utilisé seulement pour les questions libres à l'assistant. Les factures sont préparées sans lui. Consentement {c?.external_model ? 'donné' : 'non donné'}.</div></div>
+          <div><b>Fournisseur de modèle externe — {provider}</b><div className="small muted">Utilisé seulement si l'intelligence artificielle est activée (onglet « Intelligence artificielle ») : questions libres, lecture fine des documents, outils. Les noms, NIF, e-mails et numéros sont remplacés par des jetons avant tout envoi (pseudonymisation, pas anonymisation). Les montants sont toujours calculés par l'application. Consentement {c?.external_model ? 'donné' : 'non donné'}.</div></div>
           {admin && c && <button className={`btn small${c.external_model ? ' danger' : ' primary'}`} disabled={busy} onClick={() => run(async () => setC(await api.post('/api/orgs/current/consents', { type: 'external_model', granted: !c.external_model })), 'Consentement enregistré.')}>{c.external_model ? 'Retirer' : 'Autoriser'}</button>}
         </div>
       </div>
       <div className="small muted">Conditions d'utilisation : {c?.terms ? 'acceptées' : 'non acceptées'} · Politique de confidentialité : {c?.privacy ? 'acceptée' : 'non acceptée'}. Chaque décision est horodatée et versionnée.</div>
+      <div className="small muted">Conservation : les factures, paiements, crédits et le journal d'audit sont conservés (obligations comptables) ; les extraits des échanges avec l'IA sont effacés après 90 jours ; les codes et sessions expirés sont supprimés automatiquement.</div>
+      {admin && <div><button className="btn small" onClick={() => download('/api/orgs/current/export', `export-${new Date().toISOString().slice(0, 10)}.json`)}><Icon name="download" size={14} /> Exporter toutes les données (JSON)</button></div>}
     </div>
   )
 }
@@ -111,8 +122,9 @@ function Team() {
   return (
     <div className="stack" style={{ maxWidth: 820 }}>
       <div className="card">
-        <table className="table"><thead><tr><th>Personne</th><th>Rôle</th></tr></thead>
-          <tbody>{members.map(m => <tr key={m.id}><td><b>{[m.first_name, m.last_name].filter(Boolean).join(' ') || '—'}</b><div className="small muted">{m.email}</div></td><td>{ROLE_LABEL[m.role]}</td></tr>)}</tbody></table>
+        <table className="table"><thead><tr><th>Personne</th><th>Rôle</th><th /></tr></thead>
+          <tbody>{members.map(m => <tr key={m.id}><td><b>{[m.first_name, m.last_name].filter(Boolean).join(' ') || '—'}</b><div className="small muted">{m.email}</div></td><td>{ROLE_LABEL[m.role]}</td>
+            <td className="right">{admin && m.role !== 'owner' && m.id !== me?.user.id && <button className="btn small ghost" disabled={busy} onClick={() => { if (window.confirm(`Retirer ${m.email} de l'espace ? Son accès prend fin immédiatement.`)) void run(async () => { await api.del(`/api/orgs/current/members/${m.id}`); await load() }, 'Membre retiré.') }}>Retirer</button>}</td></tr>)}</tbody></table>
       </div>
       {admin && (
         <div className="card card-pad stack">
@@ -263,6 +275,20 @@ const ACTIONS: Record<string, string> = {
   'invoice.drafted': 'Projet de facture préparé', 'invoice.validated': 'Facture validée', 'invoice.rejected': 'Facture rejetée', 'invoice.corrected': 'Facture corrigée',
   'invoice.pdf_downloaded': 'PDF téléchargé', 'auth.session_revoked': 'Appareil déconnecté',
   'client.created': 'Client ajouté', 'client.updated': 'Client modifié', 'contract.created': 'Contrat ajouté', 'contract.updated': 'Contrat modifié',
+  'credits.refunded': 'Crédits remboursés', 'credits.corrected': 'Correction de crédits', 'credits.settings_updated': 'Seuil de solde modifié',
+  'payment.started': 'Achat de crédits lancé', 'payment.succeeded': 'Paiement confirmé par SasPay', 'payment.amount_mismatch': 'Paiement au montant inattendu',
+  'invoice.created': 'Facture saisie', 'invoice.generated': 'Facture générée depuis un document', 'invoice.payment_recorded': 'Paiement client enregistré',
+  'invoice.payment_reversed': 'Paiement client annulé', 'invoice.shared': 'Lien de partage créé', 'invoice.share_revoked': 'Lien de partage désactivé',
+  'invoice.share_viewed': 'Facture consultée par lien', 'invoice.sent': 'Facture envoyée par e-mail',
+  'document.extracted': 'Document lu', 'document.dismissed': 'Document écarté', 'document.reprocessed': 'Document relu', 'document.virus_blocked': 'Fichier bloqué par l\'antivirus',
+  'knowledge.added': 'Connaissance ajoutée', 'knowledge.updated': 'Connaissance mise à jour', 'knowledge.deleted': 'Connaissance supprimée',
+  'mcp.server_added': 'Serveur MCP ajouté', 'mcp.server_removed': 'Serveur MCP supprimé', 'mcp.tool_updated': 'Outil MCP modifié', 'mcp.tool_called': 'Outil MCP essayé',
+  'connector.google_started': 'Connexion Google demandée', 'connector.google_connected': 'Google connecté', 'connector.google_disconnected': 'Google déconnecté',
+  'connector.sheets_export': 'Export vers Google Sheets', 'connector.whatsapp_connected': 'WhatsApp connecté', 'connector.whatsapp_disconnected': 'WhatsApp déconnecté',
+  'whatsapp.sent': 'Message WhatsApp envoyé', 'approval.requested': 'Validation demandée par un agent', 'approval.approved': 'Action approuvée',
+  'approval.rejected': 'Action refusée', 'approval.executed': 'Action exécutée', 'ai.settings_updated': 'Réglages IA modifiés',
+  'agent.prompt_version': 'Instructions d\'agent enregistrées', 'agent.prompt_activated': 'Version d\'instructions activée', 'agent.tools_updated': 'Outils d\'agent modifiés',
+  'member.removed': 'Membre retiré', 'org.exported': 'Données exportées',
 }
 
 function Audit() {

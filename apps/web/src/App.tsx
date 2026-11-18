@@ -12,6 +12,13 @@ import { Credits } from './pages/Credits'
 import { Settings } from './pages/Settings'
 import { About } from './pages/About'
 import { Platform } from './pages/Platform'
+import { DocumentReview } from './pages/DocumentReview'
+import { InvoiceNew, Invoices } from './pages/Invoices'
+import { Knowledge } from './pages/Knowledge'
+import { Approvals } from './pages/Approvals'
+import { WhatsApp } from './pages/WhatsApp'
+import { AiActivity } from './pages/AiActivity'
+import { AgentSettings } from './pages/AgentSettings'
 
 export function App() {
   const { me, loading } = useSession()
@@ -25,6 +32,14 @@ export function App() {
       <Route path="/sessions/:id" element={<SessionPage />} />
       <Route path="/validations" element={<Validations />} />
       <Route path="/validations/:id" element={<InvoiceReview />} />
+      <Route path="/documents/:id" element={<DocumentReview />} />
+      <Route path="/factures" element={<Invoices />} />
+      <Route path="/factures/nouvelle" element={<InvoiceNew />} />
+      <Route path="/connaissances" element={<Knowledge />} />
+      <Route path="/approbations" element={<Approvals />} />
+      <Route path="/whatsapp" element={<WhatsApp />} />
+      <Route path="/activite-ia" element={<AiActivity />} />
+      <Route path="/agents/:id" element={<AgentSettings />} />
       <Route path="/packs" element={<Packs />} />
       <Route path="/credits" element={<Credits />} />
       <Route path="/parametres" element={<Settings />} />
