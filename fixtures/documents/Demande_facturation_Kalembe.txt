@@ -1,0 +1,11 @@
+Objet : demande de facture
+Client : Kalembe Mining SA
+NIF : B2345678M
+Date : 15/11/2026
+
+Bonjour, merci de nous facturer :
+- Location groupe électrogène 100 kVA : 2 x 210,00 = 420,00 USD
+- Livraison sur site : 1 x 150,00 = 150,00 USD
+
+Total HT : 570,00 USD
+Document fictif généré pour les tests.

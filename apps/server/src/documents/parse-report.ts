@@ -63,15 +63,5 @@ export function parseReport(text: string): ActivityReport {
   return parsed.data
 }
 
-/** Text that tries to instruct the agent (prompt injection). It is never obeyed; it is shown to the human. */
-export function suspiciousInstructions(text: string): boolean {
-  const t = text.toLowerCase()
-  const patterns = [
-    /\b(agent|ia|ai|assistant|chatgpt|claude|deepseek)\b.{0,40}\b(ignore|oublie|ne tiens pas compte)/,
-    /\bignore[rz]?\b.{0,40}\b(tarif|contrat|règle|regle|instruction|consigne)/,
-    /sans (validation|contrôle|controle|vérification|verification)/,
-    /\b(envoie|transf[eè]re|paie|vire)\b.{0,30}\b(imm[ée]diatement|tout de suite|sans)/,
-    /ignore (all|previous|the above) (instructions|rules)/,
-  ]
-  return patterns.some(p => p.test(t))
-}
+/** Kept here for existing imports; one implementation for every module (security/guardrails.ts). */
+export { suspiciousInstructions } from '../security/guardrails.js'

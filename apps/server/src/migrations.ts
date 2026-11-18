@@ -399,6 +399,70 @@ export const MIGRATIONS: Array<{ version: number; name: string; sql: string }> =
   );
   `,
   },
+  {
+    version: 4,
+    name: 'any business document, review before invoicing, manual invoices, payment status, sharing',
+    sql: `
+  ALTER TABLE documents DROP CONSTRAINT documents_kind_check;
+  ALTER TABLE documents ADD CONSTRAINT documents_kind_check CHECK (kind IN ('pdf', 'xlsx', 'csv', 'png', 'jpeg', 'webp', 'docx', 'txt'));
+  ALTER TABLE documents DROP CONSTRAINT documents_status_check;
+  ALTER TABLE documents ADD CONSTRAINT documents_status_check
+    CHECK (status IN ('queued', 'processing', 'waiting_credits', 'needs_review', 'done', 'duplicate', 'failed', 'dismissed'));
+  ALTER TABLE documents ADD COLUMN extracted_invoice jsonb;
+  ALTER TABLE documents ADD COLUMN extraction_method text;
+  ALTER TABLE documents ADD COLUMN ocr_used boolean NOT NULL DEFAULT false;
+  ALTER TABLE documents ADD COLUMN ocr_confidence integer CHECK (ocr_confidence BETWEEN 0 AND 100);
+  ALTER TABLE documents ADD COLUMN pages integer;
+  ALTER TABLE documents ADD COLUMN size integer;
+
+  ALTER TABLE invoices ALTER COLUMN document_id DROP NOT NULL;
+  ALTER TABLE invoices ALTER COLUMN agent_id DROP NOT NULL;
+  ALTER TABLE invoices ALTER COLUMN contract_id DROP NOT NULL;
+  ALTER TABLE invoices ALTER COLUMN po_number DROP NOT NULL;
+  ALTER TABLE invoices ADD COLUMN source text NOT NULL DEFAULT 'report' CHECK (source IN ('report', 'document', 'manual'));
+  ALTER TABLE invoices ADD COLUMN discount_cents bigint NOT NULL DEFAULT 0 CHECK (discount_cents >= 0);
+  ALTER TABLE invoices ADD COLUMN payment_status text NOT NULL DEFAULT 'unpaid' CHECK (payment_status IN ('unpaid', 'partial', 'paid'));
+  ALTER TABLE invoices ADD COLUMN amount_paid_cents bigint NOT NULL DEFAULT 0 CHECK (amount_paid_cents >= 0);
+  ALTER TABLE invoices ADD COLUMN paid_at timestamptz;
+  ALTER TABLE invoices ADD COLUMN notes text;
+  ALTER TABLE invoices ADD COLUMN created_by uuid REFERENCES users (id);
+  ALTER TABLE invoices ADD COLUMN reference text;
+  CREATE UNIQUE INDEX invoices_one_per_document ON invoices (org_id, document_id) WHERE document_id IS NOT NULL;
+  CREATE INDEX invoices_org_client ON invoices (org_id, client_id);
+
+  CREATE TABLE invoice_shares (
+    id uuid PRIMARY KEY,
+    org_id uuid NOT NULL REFERENCES organizations (id),
+    invoice_id uuid NOT NULL REFERENCES invoices (id),
+    token_hash text NOT NULL UNIQUE,
+    expires_at timestamptz NOT NULL,
+    revoked_at timestamptz,
+    created_by uuid NOT NULL REFERENCES users (id),
+    views integer NOT NULL DEFAULT 0,
+    created_at timestamptz NOT NULL DEFAULT now()
+  );
+  CREATE INDEX invoice_shares_invoice ON invoice_shares (org_id, invoice_id);
+
+  -- Payments received from the customer (not credits): partial or full.
+  CREATE TABLE invoice_payments (
+    id uuid PRIMARY KEY,
+    org_id uuid NOT NULL REFERENCES organizations (id),
+    invoice_id uuid NOT NULL REFERENCES invoices (id),
+    -- A mistake is undone by a reversal (negative amount pointing at the original), never by deletion.
+    amount_cents bigint NOT NULL CHECK (amount_cents <> 0),
+    reversal_of uuid UNIQUE REFERENCES invoice_payments (id),
+    paid_on date NOT NULL,
+    method text,
+    note text,
+    created_by uuid NOT NULL REFERENCES users (id),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CHECK ((reversal_of IS NULL) = (amount_cents > 0))
+  );
+  CREATE INDEX invoice_payments_invoice ON invoice_payments (org_id, invoice_id);
+  CREATE TRIGGER invoice_payments_append_only BEFORE UPDATE OR DELETE ON invoice_payments
+    FOR EACH ROW EXECUTE FUNCTION akili_append_only();
+  `,
+  },
 ]
 
 export async function migrate(db: Db): Promise<void> {

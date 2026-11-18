@@ -6,8 +6,21 @@
 import nodemailer from 'nodemailer'
 import type { Config } from '../config.js'
 
+export interface OutgoingMail {
+  to: string
+  subject: string
+  text: string
+  replyTo?: string
+  attachments?: Array<{ filename: string; content: Buffer; contentType: string }>
+}
+
 export interface Mailer {
   sendLoginCode(email: string, code: string): Promise<void>
+  /**
+   * Business e-mail (an invoice to a customer). Undefined when no real mail service is configured:
+   * such an e-mail is refused, never pretended to be sent.
+   */
+  sendMail?: (mail: OutgoingMail) => Promise<void>
 }
 
 export function loginCodeMessage(brand: string, code: string): { subject: string; text: string; html: string } {
@@ -57,6 +70,9 @@ export function createMailer(config: Config, transportOverrides: { tls?: { rejec
     async sendLoginCode(email, code) {
       const message = loginCodeMessage(config.brand, code)
       await transport.sendMail({ from: smtp.from, to: email, ...message })
+    },
+    async sendMail(mail) {
+      await transport.sendMail({ from: smtp.from, to: mail.to, subject: mail.subject, text: mail.text, replyTo: mail.replyTo, attachments: mail.attachments })
     },
   }
 }

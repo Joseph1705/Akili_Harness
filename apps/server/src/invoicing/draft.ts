@@ -3,7 +3,7 @@
  * computed here, by code (rule 6). Report text is data: remarks are never read as instructions (rule 9).
  */
 import type { ActivityReport } from '../documents/parse-report.js'
-import { suspiciousInstructions } from '../documents/parse-report.js'
+import { suspiciousInstructions } from '../security/guardrails.js'
 import type { Client, Contract } from './clients.js'
 import { computeInvoice, formatMoney, formatQty, parseMoney, parseQty } from './compute.js'
 import { VAT_STANDARD_BP } from './tax.js'

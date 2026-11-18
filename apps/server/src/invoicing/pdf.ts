@@ -25,18 +25,24 @@ export interface InvoicePdfData {
   number: string
   issueDate: string
   dueDate: string
-  poNumber: string
+  poNumber: string | null
+  /** Number of the source document (delivery note, quote, order) when there is one. */
+  reference?: string | null
   period: string | null
   currency: string
   provider: { name: string; address: string | null; rccm: string | null; nif: string | null; idNat: string | null; bank: string | null }
   client: { name: string; address: string | null; nif: string | null }
   lines: InvoiceLine[]
   subtotalCents: number
+  discountCents?: number
   vatRateBp: number
   vatCents: number
   totalCents: number
   checks: Check[]
   logoPng: Buffer | null
+  notes?: string | null
+  paymentStatus?: 'unpaid' | 'partial' | 'paid'
+  amountPaidCents?: number
 }
 
 const frDate = (iso: string) => iso.slice(0, 10).split('-').reverse().join('/')
@@ -71,7 +77,10 @@ export function renderInvoicePdf(d: InvoicePdfData): Promise<Buffer> {
     doc.font('sansBold').fontSize(7.5).fillColor(MUTED).text('FACTURÉ À', left, y + 8)
     doc.font('sansBold').fontSize(10).fillColor(INK).text(d.client.name, left, y + 20)
     doc.font('sans').fontSize(8.5).fillColor(MUTED).text([d.client.address, d.client.nif && `NIF ${d.client.nif}`].filter(Boolean).join(' · '), left, y + 34, { width: 240 })
-    const meta: Array<[string, string]> = [['Date', frDate(d.issueDate)], ['Bon de commande', d.poNumber], ['Échéance', frDate(d.dueDate)]]
+    const meta: Array<[string, string]> = [['Date', frDate(d.issueDate)]]
+    if (d.poNumber) meta.push(['Bon de commande', d.poNumber])
+    if (d.reference && d.reference !== d.poNumber) meta.push(['Référence', d.reference])
+    meta.push(['Échéance', frDate(d.dueDate)])
     if (d.period) meta.push(['Période', d.period])
     meta.forEach(([k, v], i) => {
       doc.font('sans').fontSize(8.5).fillColor(MUTED).text(k, 310, y + 8 + i * 15)
@@ -106,15 +115,27 @@ export function renderInvoicePdf(d: InvoicePdfData): Promise<Buffer> {
       y += bold ? 20 : 15
     }
     totalRow('Total HT', formatMoney(d.subtotalCents))
+    if (d.discountCents) {
+      totalRow('Remise', `-${formatMoney(d.discountCents)}`)
+      totalRow('Base taxable', formatMoney(d.subtotalCents - d.discountCents))
+    }
     totalRow(d.vatRateBp ? `TVA ${d.vatRateBp / 100} %` : 'TVA non applicable', formatMoney(d.vatCents))
     doc.moveTo(330, y - 3).lineTo(right, y - 3).lineWidth(1.2).strokeColor(INK).stroke()
     y += 3
     totalRow('Total TTC', `${formatMoney(d.totalCents)} ${d.currency}`, true)
+    if (d.status === 'validated' && d.paymentStatus === 'paid') {
+      doc.font('sansBold').fontSize(9).fillColor(GREEN).text('PAYÉE', 330, y, { width: right - 330, align: 'right' })
+      y += 14
+    } else if (d.status === 'validated' && d.paymentStatus === 'partial' && d.amountPaidCents) {
+      totalRow('Déjà payé', formatMoney(d.amountPaidCents))
+      totalRow('Reste à payer', `${formatMoney(d.totalCents - d.amountPaidCents)} ${d.currency}`, true)
+    }
 
     // Payment and legal mentions.
     y += 16
     doc.moveTo(left, y).lineTo(right, y).lineWidth(0.4).strokeColor('#C9D2CB').stroke()
-    if (d.provider.bank) doc.font('sans').fontSize(8.5).fillColor(MUTED).text(d.provider.bank, left, y + 8, { width: right - left })
+    if (d.provider.bank) { doc.font('sans').fontSize(8.5).fillColor(MUTED).text(d.provider.bank, left, y + 8, { width: right - left }); y = doc.y }
+    if (d.notes) doc.font('sans').fontSize(8.5).fillColor(MUTED).text(d.notes, left, y + 10, { width: right - left, height: Math.max(20, 740 - y - 10), ellipsis: true })
     doc.rect(left, 760, right - left, 34).fillColor('#F6F2E9').fill()
     doc.font('sansBold').fontSize(8.5).fillColor(GREEN).text('Document non fiscal — projet de facture', left + 10, 767)
     doc.font('sans').fontSize(7.5).fillColor(MUTED).text("Ce document n'est pas une facture normalisée DGI. La facture fiscale est émise par votre dispositif électronique fiscal homologué.", left + 10, 779, { width: right - left - 20 })

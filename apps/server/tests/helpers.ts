@@ -6,7 +6,7 @@ import { randomBytes } from 'node:crypto'
 import { expect } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { buildApp } from '../src/app.js'
-import type { Mailer } from '../src/auth/mailer.js'
+import type { Mailer, OutgoingMail } from '../src/auth/mailer.js'
 import { loadConfig, type Config } from '../src/config.js'
 import { openDb, type Db } from '../src/db.js'
 
@@ -32,14 +32,19 @@ export async function testDb(): Promise<TestDb> {
   }
 }
 
-/** Captures login codes instead of sending e-mails. */
-export function captureMailer(): Mailer & { codes: Map<string, string>; fail: boolean } {
+/** Captures login codes and business e-mails instead of sending them (a test SMTP stands in for the real one). */
+export function captureMailer(): Mailer & { codes: Map<string, string>; fail: boolean; sent: OutgoingMail[] } {
   const codes = new Map<string, string>()
-  const mailer = {
-    codes, fail: false,
+  const sent: OutgoingMail[] = []
+  const mailer: Mailer & { codes: Map<string, string>; fail: boolean; sent: OutgoingMail[] } = {
+    codes, fail: false, sent,
     async sendLoginCode(email: string, code: string) {
       if (mailer.fail) throw new Error('smtp down')
       codes.set(email, code)
+    },
+    async sendMail(mail: OutgoingMail) {
+      if (mailer.fail) throw new Error('smtp down')
+      sent.push(mail)
     },
   }
   return mailer
@@ -145,15 +150,19 @@ export async function grantCredits(t: TestContext, orgId: string, credits: numbe
   await topup(t.db, orgId, credits, 'TEST-PAY', null)
 }
 
-/** Owner with clients, credits and an invoicing agent; `upload(name)` sends a fixture report. */
+export const documentsDir = join(fixturesDir, 'documents')
+
+/** Owner with clients, credits and an invoicing agent; `upload(name)` sends a fixture report, `uploadDoc(name)` a business document. */
 export async function readyOrg(ctx: TestContext, email = 'owner@example.cd', credits = 20) {
   const owner = await onboardedOwner(ctx, email)
   await importFixtureClients(owner.call)
   if (credits > 0) await grantCredits(ctx, owner.orgId, credits)
   const agent = (await owner.call('POST', '/api/agents', { packId: 'facturation-sous-traitance', name: 'Agent Facturation' })).json().agent
-  const upload = async (name: string) => {
-    const body = multipart({ agentId: agent.id }, { field: 'file', filename: name, bytes: readFileSync(join(reportsDir, name)) })
+  const send = (name: string, bytes: Buffer) => {
+    const body = multipart({ agentId: agent.id }, { field: 'file', filename: name, bytes })
     return ctx.app.inject({ method: 'POST', url: '/api/documents', headers: { origin: ORIGIN, cookie: owner.cookie, ...body.headers }, payload: body.payload })
   }
-  return { ...owner, agent, upload }
+  const upload = (name: string) => send(name, readFileSync(join(reportsDir, name)))
+  const uploadDoc = (name: string) => send(name, readFileSync(join(documentsDir, name)))
+  return { ...owner, agent, upload, uploadDoc, send }
 }

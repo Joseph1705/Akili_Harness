@@ -52,7 +52,7 @@ describe('document processing', () => {
     expect(res.statusCode).toBe(400)
   })
 
-  it('marks a non-report document as failed without charging', async () => {
+  it('marks a document with nothing to invoice as failed without charging', async () => {
     t = await createTestApp()
     const o = await readyOrg(t)
     const body = multipart({ agentId: o.agent.id }, { field: 'file', filename: 'notes.csv', bytes: Buffer.from('a;b\nc;d\n') })
@@ -60,7 +60,7 @@ describe('document processing', () => {
     await drainJobs(t.app)
     const doc = (await o.call('GET', '/api/documents')).json().documents[0]
     expect(doc.status).toBe('failed')
-    expect(doc.error).toMatch(/Rapport N°/)
+    expect(doc.error).toMatch(/Aucune information de facturation.*Aucun crédit/)
     expect((await o.call('GET', '/api/credits')).json().balance).toBe(20)
   })
 })

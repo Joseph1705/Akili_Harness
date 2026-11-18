@@ -35,13 +35,32 @@ function divRoundHalfUp(numerator: bigint, denominator: bigint): bigint {
 export interface Totals {
   lineCents: number[]
   subtotalCents: number
+  discountCents: number
+  /** Subtotal minus discount: the base VAT is computed on. */
+  taxableCents: number
   vatCents: number
   totalCents: number
 }
 
-export function computeInvoice(lines: Array<{ qtyMilli: number; unitCents: number }>, vatRateBp: number): Totals {
+/** Lines, then an invoice-level discount, then VAT on what remains. Every value in integers. */
+export function computeInvoice(lines: Array<{ qtyMilli: number; unitCents: number }>, vatRateBp: number, discountCents = 0): Totals {
+  if (!Number.isInteger(vatRateBp) || vatRateBp < 0 || vatRateBp > 10_000) throw new RangeError(`taux de TVA invalide : ${vatRateBp}`)
   const lineCents = lines.map(l => Number(divRoundHalfUp(BigInt(l.qtyMilli) * BigInt(l.unitCents), 1000n)))
   const subtotal = lineCents.reduce((a, b) => a + b, 0)
-  const vat = Number(divRoundHalfUp(BigInt(subtotal) * BigInt(vatRateBp), 10_000n))
-  return { lineCents, subtotalCents: subtotal, vatCents: vat, totalCents: subtotal + vat }
+  if (!Number.isInteger(discountCents) || discountCents < 0 || discountCents > subtotal) throw new RangeError('remise supérieure au total des lignes')
+  const taxable = subtotal - discountCents
+  const vat = Number(divRoundHalfUp(BigInt(taxable) * BigInt(vatRateBp), 10_000n))
+  return { lineCents, subtotalCents: subtotal, discountCents, taxableCents: taxable, vatCents: vat, totalCents: taxable + vat }
+}
+
+/** A discount given as an amount ("150.00") or a percentage ("5", "2.5") of the subtotal, in cents. */
+export function discountCents(subtotalCents: number, discount: { type: 'amount' | 'percent'; value: string } | null | undefined): number {
+  if (!discount) return 0
+  const value = discount.value.trim().replace(',', '.')
+  if (discount.type === 'amount') return parseMoney(value)
+  if (!/^\d{1,3}(\.\d{1,2})?$/.test(value)) throw new RangeError(`pourcentage invalide : ${discount.value}`)
+  const [int, dec = ''] = value.split('.')
+  const bp = Number(int) * 100 + Number(dec.padEnd(2, '0'))
+  if (bp > 10_000) throw new RangeError('remise supérieure à 100 %')
+  return Number(divRoundHalfUp(BigInt(subtotalCents) * BigInt(bp), 10_000n))
 }

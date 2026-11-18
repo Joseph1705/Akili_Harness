@@ -44,6 +44,10 @@ export interface Config {
   models: { deepseek: boolean; anthropic: boolean }
   /** SasPay credentials; undefined: online payment unavailable (never simulated). */
   saspay: { baseUrl: string; apiKey: string; webhookSecret: string | undefined } | undefined
+  /** OCR of scans and photos, on this server. */
+  ocr: { enabled: boolean; maxPages: number }
+  /** ClamAV daemon scanning every upload; undefined: not configured. */
+  antivirus: { host: string; port: number } | undefined
 }
 
 function fail(name: string, why: string): never {
@@ -66,6 +70,13 @@ function readMasterKey(env: NodeJS.ProcessEnv, production: boolean, dataDir: str
   writeFileSync(path, key.toString('base64'), { mode: 0o600 })
   chmodSync(path, 0o600)
   return key
+}
+
+function intIn(raw: string | undefined, fallback: number, min: number, max: number, name: string): number {
+  if (raw === undefined || raw.trim() === '') return fallback
+  const n = Number(raw)
+  if (!Number.isInteger(n) || n < min || n > max) fail(name, `must be an integer between ${min} and ${max}`)
+  return n
 }
 
 function readSasPay(env: NodeJS.ProcessEnv, production: boolean): Config['saspay'] {
@@ -128,5 +139,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     webDist: env.AKILI_WEB_DIST,
     models: { deepseek: Boolean(env.DEEPSEEK_API_KEY), anthropic: Boolean(env.ANTHROPIC_API_KEY) },
     saspay: readSasPay(env, production),
+    ocr: { enabled: env.AKILI_OCR !== 'off', maxPages: intIn(env.AKILI_OCR_MAX_PAGES, 10, 1, 50, 'AKILI_OCR_MAX_PAGES') },
+    antivirus: env.CLAMAV_HOST?.trim() ? { host: env.CLAMAV_HOST.trim(), port: intIn(env.CLAMAV_PORT, 3310, 1, 65535, 'CLAMAV_PORT') } : undefined,
   }
 }

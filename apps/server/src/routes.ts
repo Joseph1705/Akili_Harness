@@ -8,7 +8,7 @@ import { orgRoutes } from './orgs/routes.js'
 import { creditRoutes } from './credits.js'
 import { agentRoutes } from './agents/routes.js'
 import { documentRoutes } from './documents/routes.js'
-import { invoiceRoutes } from './invoicing/routes.js'
+import { invoiceRoutes, publicInvoiceRoutes } from './invoicing/routes.js'
 import { clientRoutes } from './invoicing/client-routes.js'
 import { sessionRoutes } from './sessions/routes.js'
 import { platformRoutes } from './platform.js'
@@ -47,6 +47,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   await app.register(agentRoutes)
   await app.register(documentRoutes, { prefix: '/documents' })
   await app.register(invoiceRoutes, { prefix: '/invoices' })
+  await app.register(publicInvoiceRoutes, { prefix: '/public/invoices' })
   await app.register(clientRoutes)
   await app.register(sessionRoutes)
   await app.register(platformRoutes, { prefix: '/platform' })

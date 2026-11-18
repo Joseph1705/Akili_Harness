@@ -4,3 +4,5 @@ packages:
 allowBuilds:
   esbuild: true
   sharp: true
+  # Only an "opencollective" message, not needed.
+  tesseract.js: false

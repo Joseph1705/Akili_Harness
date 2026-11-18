@@ -5,11 +5,12 @@ import { audit } from '../audit.js'
 import { CAN, orgOf } from '../auth/context.js'
 import { badRequest, notFound } from '../errors.js'
 import { extractText } from '../documents/extract.js'
+import { extractInvoiceFields, type OrgIdentity } from '../documents/invoice-fields.js'
 import { parseReport } from '../documents/parse-report.js'
 import { clientById, contractByPo } from '../invoicing/clients.js'
 import { buildDraft, type OrgTaxProfile } from '../invoicing/draft.js'
 import { safeFilename } from '../storage/blobs.js'
-import { sniff } from '../storage/sniff.js'
+import { DOCUMENT_KINDS, sniff } from '../storage/sniff.js'
 import { createAgent, packById, PACKS } from './packs.js'
 
 export async function agentRoutes(app: FastifyInstance): Promise<void> {
@@ -65,14 +66,25 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     for await (const part of request.parts()) {
       if (part.type === 'file') files.push({ filename: safeFilename(part.filename), bytes: await part.toBuffer() })
     }
-    if (files.length === 0 || files.length > 5) throw badRequest('Joignez de 1 à 5 rapports pour le test.')
+    if (files.length === 0 || files.length > 5) throw badRequest('Joignez de 1 à 5 documents pour le test.')
     const profile = (await db.get<OrgTaxProfile>('SELECT nif, rccm, vat_status FROM organizations WHERE id = ?', org.id))!
+    const identity = (await db.get<OrgIdentity>('SELECT name, nif, rccm, currency FROM organizations WHERE id = ?', org.id))!
     const results = []
     for (const file of files) {
       const kind = sniff(file.bytes)
-      if (kind !== 'pdf' && kind !== 'xlsx' && kind !== 'csv') { results.push({ filename: file.filename, ok: false, error: 'Format non pris en charge.' }); continue }
+      if (!kind || !DOCUMENT_KINDS.has(kind)) { results.push({ filename: file.filename, ok: false, error: 'Format non pris en charge.' }); continue }
       try {
-        const report = parseReport(await extractText(file.bytes, kind))
+        const text = await extractText(file.bytes, kind, { ocr: app.deps.config.ocr.enabled, maxOcrPages: 3 })
+        let report
+        try { report = parseReport(text) } catch {
+          // Not an activity report: what would be proposed for review.
+          const fields = extractInvoiceFields(text, identity)
+          const usable = fields.lines.length > 0 || fields.total !== null || fields.client.name !== null
+          results.push(usable
+            ? { filename: file.filename, ok: true, review: true, client: fields.client.name, lines: fields.lines.length, total_read: fields.total ?? fields.subtotal, currency: fields.currency, attention: fields.suspicious_instructions ? 1 : 0 }
+            : { filename: file.filename, ok: false, error: 'Aucune information de facturation trouvée.' })
+          continue
+        }
         const contract = await contractByPo(db, org.id, report.po)
         const client = contract && await clientById(db, org.id, contract.client_id)
         if (!contract || !client) { results.push({ filename: file.filename, ok: false, report: report.number, error: `Bon de commande ${report.po} inconnu.` }); continue }
