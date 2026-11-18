@@ -1,5 +1,5 @@
 /** Organization files, encrypted on disk under <dataDir>/blobs/<org>/<id>. Metadata in the `blobs` table. */
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import type { Config } from '../config.js'
@@ -47,4 +47,17 @@ export async function getBlob(db: Db, config: Config, orgId: string, id: string)
   if (!blob) throw notFound('Fichier')
   const bytes = decrypt(orgKey(config.masterKey, orgId), readFileSync(pathFor(config, orgId, id)), `${orgId}/${id}`)
   return { blob, bytes }
+}
+
+/**
+ * Remove a file and its record (knowledge documents only: business documents and invoices are kept).
+ * Refused while anything else still points at it.
+ */
+export async function deleteBlob(db: Db, config: Config, orgId: string, id: string): Promise<void> {
+  const used = await db.get(`SELECT 1 FROM documents WHERE blob_id = ? AND org_id = ?
+    UNION ALL SELECT 1 FROM organizations WHERE logo_blob_id = ? AND id = ?
+    UNION ALL SELECT 1 FROM knowledge_documents WHERE blob_id = ? AND org_id = ? LIMIT 1`, id, orgId, id, orgId, id, orgId)
+  if (used) return
+  await db.run('DELETE FROM blobs WHERE id = ? AND org_id = ?', id, orgId)
+  rmSync(pathFor(config, orgId, id), { force: true })
 }

@@ -76,14 +76,16 @@ describe('dashboard and sessions', () => {
     expect((await o.call('GET', '/api/sessions')).json().sessions[0].id).toBe(sessionId)
   })
 
-  it('answers commands, and says plainly when no model is configured', async () => {
+  it('answers commands, and says plainly that AI is off until the organization enables it', async () => {
     t = await createTestApp()
     const o = await readyOrg(t)
     const sid = (await o.call('POST', '/api/sessions', { title: 'Questions' })).json().session.id
     const solde = (await o.call('POST', `/api/sessions/${sid}/messages`, { text: '/solde' })).json()
     expect(solde.reply.text).toContain('20 crédits')
     const free = (await o.call('POST', `/api/sessions/${sid}/messages`, { text: 'Combien ai-je facturé à Tshala ?' })).json()
-    expect(free.reply.text).toMatch(/modèle/)
+    expect(free.reply.text).toMatch(/intelligence artificielle est désactivée/)
+    // Rule 5: nothing was sent to any model provider.
+    expect(await t.db.get('SELECT 1 FROM ai_runs')).toBeUndefined()
     expect((await o.call('POST', `/api/sessions/${sid}/messages`, { text: '' })).statusCode).toBe(400)
   })
 })

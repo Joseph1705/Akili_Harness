@@ -463,6 +463,256 @@ export const MIGRATIONS: Array<{ version: number; name: string; sql: string }> =
     FOR EACH ROW EXECUTE FUNCTION akili_append_only();
   `,
   },
+  {
+    version: 5,
+    name: 'AI harness: settings, versioned prompts, runs, cache, knowledge, MCP, approvals, connectors',
+    sql: `
+  -- Rule 5: no call to a model provider until the organization switches it on (and consents, for an external one).
+  CREATE TABLE ai_settings (
+    org_id uuid PRIMARY KEY REFERENCES organizations (id),
+    enabled boolean NOT NULL DEFAULT false,
+    mode text NOT NULL DEFAULT 'external' CHECK (mode IN ('external', 'local')),
+    use_for_extraction boolean NOT NULL DEFAULT true,
+    use_for_chat boolean NOT NULL DEFAULT true,
+    whatsapp_drafts boolean NOT NULL DEFAULT false,
+    monthly_token_limit integer CHECK (monthly_token_limit IS NULL OR monthly_token_limit > 0),
+    updated_by uuid REFERENCES users (id),
+    updated_at timestamptz NOT NULL DEFAULT now()
+  );
+
+  -- System prompts: one immutable row per version; the agent points at its active version.
+  CREATE TABLE agent_prompts (
+    id uuid PRIMARY KEY,
+    org_id uuid NOT NULL REFERENCES organizations (id),
+    agent_id uuid NOT NULL REFERENCES agents (id),
+    version integer NOT NULL CHECK (version > 0),
+    identity text NOT NULL,
+    instructions text NOT NULL,
+    style text NOT NULL,
+    restrictions text NOT NULL,
+    note text,
+    created_by uuid REFERENCES users (id),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (agent_id, version)
+  );
+  CREATE TRIGGER agent_prompts_append_only BEFORE UPDATE OR DELETE ON agent_prompts
+    FOR EACH ROW EXECUTE FUNCTION akili_append_only();
+  ALTER TABLE agents ADD COLUMN active_prompt_id uuid REFERENCES agent_prompts (id);
+  ALTER TABLE agents ADD COLUMN use_knowledge boolean NOT NULL DEFAULT true;
+  ALTER TABLE agents ADD COLUMN tools text[] NOT NULL DEFAULT '{}';
+
+  -- Observability: every model run and its steps (prompts stored pseudonymised and truncated).
+  CREATE TABLE ai_runs (
+    id uuid PRIMARY KEY,
+    org_id uuid NOT NULL REFERENCES organizations (id),
+    user_id uuid,
+    agent_id uuid,
+    session_id uuid,
+    document_id uuid,
+    purpose text NOT NULL CHECK (purpose IN ('chat', 'extraction', 'embedding', 'eval', 'whatsapp')),
+    status text NOT NULL CHECK (status IN ('running', 'ok', 'error', 'blocked', 'refused', 'awaiting_approval')),
+    provider text,
+    model text,
+    tier text,
+    prompt_version integer,
+    input_tokens integer NOT NULL DEFAULT 0,
+    output_tokens integer NOT NULL DEFAULT 0,
+    cache_read_tokens integer NOT NULL DEFAULT 0,
+    cache_write_tokens integer NOT NULL DEFAULT 0,
+    cost_micro_usd bigint NOT NULL DEFAULT 0,
+    cached boolean NOT NULL DEFAULT false,
+    duration_ms integer,
+    error text,
+    request_excerpt text,
+    response_excerpt text,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    finished_at timestamptz
+  );
+  CREATE INDEX ai_runs_org ON ai_runs (org_id, created_at DESC);
+  CREATE INDEX ai_runs_created ON ai_runs (created_at DESC);
+  CREATE TABLE ai_run_steps (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    run_id uuid NOT NULL REFERENCES ai_runs (id),
+    org_id uuid NOT NULL,
+    kind text NOT NULL,
+    name text NOT NULL,
+    status text NOT NULL,
+    detail jsonb,
+    duration_ms integer,
+    created_at timestamptz NOT NULL DEFAULT now()
+  );
+  CREATE INDEX ai_run_steps_run ON ai_run_steps (run_id, id);
+
+  -- Response cache, per organization, encrypted with the organization's key.
+  CREATE TABLE ai_cache (
+    org_id uuid NOT NULL REFERENCES organizations (id),
+    key_hash text NOT NULL,
+    payload bytea NOT NULL,
+    hits integer NOT NULL DEFAULT 0,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    expires_at timestamptz NOT NULL,
+    PRIMARY KEY (org_id, key_hash)
+  );
+
+  CREATE TABLE ai_evals (
+    id uuid PRIMARY KEY,
+    org_id uuid REFERENCES organizations (id),
+    suite text NOT NULL,
+    method text NOT NULL,
+    cases integer NOT NULL,
+    score numeric(5, 4) NOT NULL,
+    details jsonb NOT NULL,
+    created_by uuid REFERENCES users (id),
+    created_at timestamptz NOT NULL DEFAULT now()
+  );
+
+  -- Knowledge base (RAG), per organization.
+  CREATE TABLE knowledge_documents (
+    id uuid PRIMARY KEY,
+    org_id uuid NOT NULL REFERENCES organizations (id),
+    title text NOT NULL,
+    filename text NOT NULL,
+    kind text NOT NULL,
+    blob_id uuid REFERENCES blobs (id),
+    status text NOT NULL CHECK (status IN ('queued', 'processing', 'ready', 'failed')),
+    version integer NOT NULL DEFAULT 1,
+    chunks integer NOT NULL DEFAULT 0,
+    embedded boolean NOT NULL DEFAULT false,
+    embedding_model text,
+    ocr_used boolean NOT NULL DEFAULT false,
+    flagged boolean NOT NULL DEFAULT false,
+    error text,
+    created_by uuid REFERENCES users (id),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+  );
+  CREATE INDEX knowledge_documents_org ON knowledge_documents (org_id, updated_at DESC);
+  CREATE TABLE knowledge_chunks (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    org_id uuid NOT NULL,
+    document_id uuid NOT NULL REFERENCES knowledge_documents (id) ON DELETE CASCADE,
+    ordinal integer NOT NULL,
+    heading text,
+    content text NOT NULL,
+    tsv tsvector GENERATED ALWAYS AS (to_tsvector('french', coalesce(heading, '') || ' ' || content)) STORED,
+    embedding_model text,
+    created_at timestamptz NOT NULL DEFAULT now()
+  );
+  CREATE INDEX knowledge_chunks_tsv ON knowledge_chunks USING gin (tsv);
+  CREATE INDEX knowledge_chunks_doc ON knowledge_chunks (org_id, document_id, ordinal);
+  -- Vectors when pgvector is installed (deploy/postgres); full-text search works without it.
+  DO $pgv$ BEGIN
+    CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public;
+    EXECUTE 'ALTER TABLE knowledge_chunks ADD COLUMN embedding public.vector';
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'pgvector unavailable: knowledge search uses full-text only';
+  END $pgv$;
+
+  -- MCP servers and the tools they expose. Tools are off until an administrator turns them on.
+  CREATE TABLE mcp_servers (
+    id uuid PRIMARY KEY,
+    org_id uuid NOT NULL REFERENCES organizations (id),
+    name text NOT NULL,
+    url text NOT NULL,
+    auth_secret bytea,
+    status text NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'ok', 'error', 'disabled')),
+    last_error text,
+    last_discovered_at timestamptz,
+    created_by uuid REFERENCES users (id),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (org_id, name)
+  );
+  CREATE TABLE mcp_tools (
+    id uuid PRIMARY KEY,
+    org_id uuid NOT NULL REFERENCES organizations (id),
+    server_id uuid NOT NULL REFERENCES mcp_servers (id) ON DELETE CASCADE,
+    name text NOT NULL,
+    description text,
+    input_schema jsonb NOT NULL,
+    enabled boolean NOT NULL DEFAULT false,
+    permission text NOT NULL DEFAULT 'operate' CHECK (permission IN ('read', 'operate', 'validate', 'configure')),
+    requires_approval boolean NOT NULL DEFAULT true,
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (server_id, name)
+  );
+
+  -- Sensitive actions proposed by an agent wait for a person (rule 7).
+  CREATE TABLE action_approvals (
+    id uuid PRIMARY KEY,
+    org_id uuid NOT NULL REFERENCES organizations (id),
+    kind text NOT NULL,
+    summary text NOT NULL,
+    payload jsonb NOT NULL,
+    permission text NOT NULL CHECK (permission IN ('read', 'operate', 'validate', 'configure')),
+    status text NOT NULL CHECK (status IN ('pending', 'approved', 'rejected', 'executed', 'failed', 'expired')),
+    requested_by uuid REFERENCES users (id),
+    session_id uuid,
+    run_id uuid,
+    decided_by uuid REFERENCES users (id),
+    decided_at timestamptz,
+    reason text,
+    result jsonb,
+    error text,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    expires_at timestamptz NOT NULL
+  );
+  CREATE INDEX action_approvals_org ON action_approvals (org_id, status, created_at DESC);
+
+  -- Native connectors (Google, WhatsApp). Tokens are encrypted with the organization's key.
+  CREATE TABLE connections (
+    id uuid PRIMARY KEY,
+    org_id uuid NOT NULL REFERENCES organizations (id),
+    provider text NOT NULL CHECK (provider IN ('google', 'whatsapp')),
+    status text NOT NULL CHECK (status IN ('connected', 'error', 'revoked')),
+    account text,
+    scopes text[] NOT NULL DEFAULT '{}',
+    secrets bytea,
+    settings jsonb NOT NULL DEFAULT '{}',
+    last_error text,
+    created_by uuid REFERENCES users (id),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+  );
+  CREATE UNIQUE INDEX connections_active ON connections (org_id, provider) WHERE status <> 'revoked';
+  CREATE UNIQUE INDEX connections_whatsapp_phone ON connections ((settings->>'phone_number_id')) WHERE provider = 'whatsapp' AND status <> 'revoked';
+  CREATE TABLE oauth_states (
+    state_hash text PRIMARY KEY,
+    org_id uuid NOT NULL REFERENCES organizations (id),
+    user_id uuid NOT NULL REFERENCES users (id),
+    provider text NOT NULL,
+    verifier bytea NOT NULL,
+    scopes text[] NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    expires_at timestamptz NOT NULL,
+    used_at timestamptz
+  );
+  CREATE TABLE whatsapp_conversations (
+    id uuid PRIMARY KEY,
+    org_id uuid NOT NULL REFERENCES organizations (id),
+    connection_id uuid NOT NULL REFERENCES connections (id),
+    contact_wa_id text NOT NULL,
+    contact_name text,
+    last_inbound_at timestamptz,
+    last_message_at timestamptz NOT NULL DEFAULT now(),
+    status text NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
+    UNIQUE (connection_id, contact_wa_id)
+  );
+  CREATE TABLE whatsapp_messages (
+    id uuid PRIMARY KEY,
+    org_id uuid NOT NULL REFERENCES organizations (id),
+    conversation_id uuid NOT NULL REFERENCES whatsapp_conversations (id),
+    direction text NOT NULL CHECK (direction IN ('in', 'out')),
+    wa_message_id text UNIQUE,
+    body text NOT NULL,
+    status text NOT NULL CHECK (status IN ('received', 'draft', 'sent', 'delivered', 'read', 'failed', 'rejected')),
+    author text,
+    approval_id uuid REFERENCES action_approvals (id),
+    error text,
+    created_at timestamptz NOT NULL DEFAULT now()
+  );
+  CREATE INDEX whatsapp_messages_conversation ON whatsapp_messages (org_id, conversation_id, created_at);
+  `,
+  },
 ]
 
 export async function migrate(db: Db): Promise<void> {

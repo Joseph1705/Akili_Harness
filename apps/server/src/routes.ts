@@ -13,6 +13,10 @@ import { clientRoutes } from './invoicing/client-routes.js'
 import { sessionRoutes } from './sessions/routes.js'
 import { platformRoutes } from './platform.js'
 import { billingRoutes, sasPayWebhookRoutes } from './billing/payments.js'
+import { aiRoutes } from './ai/routes.js'
+import { knowledgeRoutes } from './knowledge/routes.js'
+import { mcpRoutes } from './mcp/routes.js'
+import { connectorRoutes, whatsappRoutes, whatsappWebhookRoutes } from './connectors/routes.js'
 
 const UNSAFE = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 export const APP_VERSION = '0.2.0'
@@ -53,4 +57,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   await app.register(platformRoutes, { prefix: '/platform' })
   await app.register(billingRoutes, { prefix: '/billing' })
   await app.register(sasPayWebhookRoutes, { prefix: '/webhooks' })
+  await app.register(whatsappWebhookRoutes, { prefix: '/webhooks' })
+  await app.register(aiRoutes)
+  await app.register(knowledgeRoutes, { prefix: '/knowledge' })
+  await app.register(mcpRoutes, { prefix: '/mcp' })
+  await app.register(connectorRoutes, { prefix: '/connectors' })
+  await app.register(whatsappRoutes, { prefix: '/whatsapp' })
 }

@@ -11,7 +11,7 @@ pg.types.setTypeParser(1184, (v: string) => new Date(v).toISOString()) // timest
 pg.types.setTypeParser(1114, (v: string) => new Date(`${v}Z`).toISOString()) // timestamp
 pg.types.setTypeParser(1082, (v: string) => v) // date
 
-type Param = string | number | boolean | null | undefined
+type Param = string | number | boolean | null | undefined | Buffer | string[]
 
 export interface Db {
   all<T = Record<string, unknown>>(sql: string, ...params: Param[]): Promise<T[]>

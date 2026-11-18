@@ -45,9 +45,10 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
     const org = orgOf(request, CAN.operate)
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params)
     const { text } = z.object({ text: z.string().trim().min(1, 'Message vide.').max(4000) }).strict().parse(request.body)
-    if (!await db.get('SELECT 1 FROM chat_sessions WHERE id = ? AND org_id = ?', id, org.id)) throw notFound('Session')
+    const session = await db.get<{ agent_id: string | null }>('SELECT agent_id FROM chat_sessions WHERE id = ? AND org_id = ?', id, org.id)
+    if (!session) throw notFound('Session')
     await addEvent(db, org.id, id, 'user', { text })
-    const reply = await answer(db, config, org.id, org.plan, text)
+    const reply = await answer(app, org, request.user!, id, session.agent_id, text)
     await addEvent(db, org.id, id, 'agent', { ...reply })
     return { reply }
   })

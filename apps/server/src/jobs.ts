@@ -8,16 +8,21 @@ import { randomUUID } from 'node:crypto'
 import type { Db } from './db.js'
 import { processDocument } from './documents/process.js'
 import { reconcilePayments } from './billing/payments.js'
+import { ingestKnowledge } from './knowledge/store.js'
+import { draftWhatsAppReply } from './connectors/routes.js'
 
 export type JobOutcome = 'done' | 'waiting_credits'
+export type JobType = 'process_document' | 'ingest_knowledge' | 'whatsapp_draft'
 
-const HANDLERS: Record<string, (app: FastifyInstance, orgId: string, refId: string) => Promise<JobOutcome>> = {
+const HANDLERS: Record<JobType, (app: FastifyInstance, orgId: string, refId: string) => Promise<JobOutcome>> = {
   process_document: processDocument,
+  ingest_knowledge: ingestKnowledge,
+  whatsapp_draft: draftWhatsAppReply,
 }
 
 const MAX_ATTEMPTS = 3
 
-export async function enqueue(db: Db, orgId: string, type: keyof typeof HANDLERS, refId: string): Promise<void> {
+export async function enqueue(db: Db, orgId: string, type: JobType, refId: string): Promise<void> {
   await db.run('INSERT INTO jobs (id, org_id, type, ref_id) VALUES (?, ?, ?, ?)', randomUUID(), orgId, type, refId)
 }
 
@@ -29,7 +34,9 @@ export async function runOneJob(app: FastifyInstance): Promise<boolean> {
     RETURNING id, org_id, type, ref_id, attempts`)
   if (!job) return false
   try {
-    const outcome = await HANDLERS[job.type]!(app, job.org_id, job.ref_id)
+    const handler = HANDLERS[job.type as JobType]
+    if (!handler) throw new Error(`unknown job type ${job.type}`)
+    const outcome = await handler(app, job.org_id, job.ref_id)
     await db.run('UPDATE jobs SET status = ?, error = NULL WHERE id = ?', outcome, job.id)
   } catch (error) {
     const failed = job.attempts >= MAX_ATTEMPTS
@@ -37,7 +44,12 @@ export async function runOneJob(app: FastifyInstance): Promise<boolean> {
       failed ? 'failed' : 'pending', String(error).slice(0, 500), 2 ** job.attempts, job.id)
     if (failed) {
       app.log.error({ job: job.id, error: String(error) }, 'job failed')
-      await db.run("UPDATE documents SET status = 'failed', error = 'Erreur interne pendant le traitement. Réessayez ou contactez le support.' WHERE id = ? AND org_id = ? AND status = 'processing'", job.ref_id, job.org_id)
+      // No credit is ever charged for a document that failed this way (the charge is inside the invoice transaction).
+      await db.run("UPDATE documents SET status = 'failed', error = 'Erreur interne pendant le traitement. Aucun crédit n''a été utilisé. Réessayez ou contactez le support.' WHERE id = ? AND org_id = ? AND status = 'processing'", job.ref_id, job.org_id)
+      await db.run("UPDATE knowledge_documents SET status = 'failed', error = 'Erreur interne pendant l''indexation. Réessayez.' WHERE id = ? AND org_id = ? AND status IN ('processing', 'queued')", job.ref_id, job.org_id)
+    } else if (job.type === 'process_document') {
+      // Back in the queue for the retry: a document never stays "processing" while no worker holds it.
+      await db.run("UPDATE documents SET status = 'queued' WHERE id = ? AND org_id = ? AND status = 'processing'", job.ref_id, job.org_id)
     }
   }
   return true

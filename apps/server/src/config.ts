@@ -48,10 +48,98 @@ export interface Config {
   ocr: { enabled: boolean; maxPages: number }
   /** ClamAV daemon scanning every upload; undefined: not configured. */
   antivirus: { host: string; port: number } | undefined
+  /** Language models, embeddings and connectors available on this server (keys stay in the environment). */
+  ai: AiConfig
+  connectors: ConnectorConfig
+  /** MCP servers on private networks (self-hosted installs only). Off by default: SSRF protection. */
+  mcpAllowPrivate: boolean
+}
+
+export interface ModelEndpoint { apiKey: string; baseUrl: string | undefined; models: { light: string; heavy: string } }
+
+export interface AiConfig {
+  /** Claude, through the official Anthropic SDK (offer Entreprise). */
+  anthropic: ModelEndpoint | undefined
+  /** DeepSeek's OpenAI-compatible API (offer Entrepreneur individuel). */
+  deepseek: (ModelEndpoint & { baseUrl: string }) | undefined
+  /** A model on our own or the customer's machine (Ollama or any OpenAI-compatible server): no data leaves. */
+  local: { baseUrl: string; apiKey: string | undefined; models: { light: string; heavy: string } } | undefined
+  /** Embeddings for knowledge search (OpenAI-compatible /embeddings). `external` providers need consent. */
+  embeddings: { baseUrl: string; apiKey: string | undefined; model: string; external: boolean } | undefined
+  /** Response cache lifetime. 0 disables the cache. */
+  cacheTtlHours: number
+}
+
+export interface ConnectorConfig {
+  /** Google OAuth client (Gmail, Sheets, Drive later). Base URLs are overridable for tests only. */
+  google: { clientId: string; clientSecret: string; authUrl: string; tokenUrl: string; gmailBase: string; sheetsBase: string; userinfoUrl: string; revokeUrl: string } | undefined
+  /** Our Meta app for the WhatsApp Business Platform (Cloud API): webhook secret and verify token. */
+  whatsapp: { appSecret: string; verifyToken: string; graphBase: string; graphVersion: string } | undefined
 }
 
 function fail(name: string, why: string): never {
   throw new Error(`config: ${name} ${why}`)
+}
+
+function url(env: NodeJS.ProcessEnv, name: string, fallback?: string): string | undefined {
+  const raw = env[name]?.trim() || fallback
+  if (!raw) return undefined
+  try { new URL(raw) } catch { fail(name, 'must be a URL') }
+  return raw.replace(/\/+$/, '')
+}
+
+function readAi(env: NodeJS.ProcessEnv): AiConfig {
+  const anthropicKey = env.ANTHROPIC_API_KEY?.trim()
+  const deepseekKey = env.DEEPSEEK_API_KEY?.trim()
+  const localUrl = url(env, 'AKILI_LOCAL_MODEL_URL')
+  const embeddingsUrl = url(env, 'AKILI_EMBEDDINGS_URL')
+  if (localUrl && !env.AKILI_LOCAL_MODEL_HEAVY?.trim()) fail('AKILI_LOCAL_MODEL_HEAVY', 'is required with AKILI_LOCAL_MODEL_URL (the model name served there)')
+  if (embeddingsUrl && !env.AKILI_EMBEDDINGS_MODEL?.trim()) fail('AKILI_EMBEDDINGS_MODEL', 'is required with AKILI_EMBEDDINGS_URL')
+  return {
+    anthropic: anthropicKey ? {
+      apiKey: anthropicKey, baseUrl: url(env, 'ANTHROPIC_BASE_URL'),
+      models: { light: env.AKILI_ANTHROPIC_MODEL_LIGHT?.trim() || 'claude-haiku-5-5', heavy: env.AKILI_ANTHROPIC_MODEL_HEAVY?.trim() || 'claude-opus-5-5' },
+    } : undefined,
+    deepseek: deepseekKey ? {
+      apiKey: deepseekKey, baseUrl: url(env, 'DEEPSEEK_BASE_URL', 'https://api.deepseek.com')!,
+      // Names from the model catalog of the pinned DeepSeek Harness; to verify on DeepSeek's site (rule 12).
+      models: { light: env.AKILI_DEEPSEEK_MODEL_LIGHT?.trim() || 'deepseek-flash', heavy: env.AKILI_DEEPSEEK_MODEL_HEAVY?.trim() || 'deepseek-v4-pro' },
+    } : undefined,
+    local: localUrl ? {
+      baseUrl: localUrl, apiKey: env.AKILI_LOCAL_MODEL_KEY?.trim() || undefined,
+      models: { light: env.AKILI_LOCAL_MODEL_LIGHT?.trim() || env.AKILI_LOCAL_MODEL_HEAVY!.trim(), heavy: env.AKILI_LOCAL_MODEL_HEAVY!.trim() },
+    } : undefined,
+    embeddings: embeddingsUrl ? {
+      baseUrl: embeddingsUrl, apiKey: env.AKILI_EMBEDDINGS_KEY?.trim() || undefined, model: env.AKILI_EMBEDDINGS_MODEL!.trim(),
+      external: env.AKILI_EMBEDDINGS_EXTERNAL !== '0',
+    } : undefined,
+    cacheTtlHours: intIn(env.AKILI_AI_CACHE_HOURS, 24, 0, 24 * 30, 'AKILI_AI_CACHE_HOURS'),
+  }
+}
+
+function readConnectors(env: NodeJS.ProcessEnv): ConnectorConfig {
+  const id = env.GOOGLE_CLIENT_ID?.trim()
+  const secret = env.GOOGLE_CLIENT_SECRET?.trim()
+  if (Boolean(id) !== Boolean(secret)) fail('GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET', 'set both or none')
+  const appSecret = env.WHATSAPP_APP_SECRET?.trim()
+  const verifyToken = env.WHATSAPP_VERIFY_TOKEN?.trim()
+  if (Boolean(appSecret) !== Boolean(verifyToken)) fail('WHATSAPP_APP_SECRET/WHATSAPP_VERIFY_TOKEN', 'set both or none')
+  return {
+    google: id && secret ? {
+      clientId: id, clientSecret: secret,
+      authUrl: url(env, 'GOOGLE_AUTH_URL', 'https://accounts.google.com/o/oauth2/v2/auth')!,
+      tokenUrl: url(env, 'GOOGLE_TOKEN_URL', 'https://oauth2.googleapis.com/token')!,
+      userinfoUrl: url(env, 'GOOGLE_USERINFO_URL', 'https://openidconnect.googleapis.com/v1/userinfo')!,
+      revokeUrl: url(env, 'GOOGLE_REVOKE_URL', 'https://oauth2.googleapis.com/revoke')!,
+      gmailBase: url(env, 'GOOGLE_GMAIL_BASE', 'https://gmail.googleapis.com')!,
+      sheetsBase: url(env, 'GOOGLE_SHEETS_BASE', 'https://sheets.googleapis.com')!,
+    } : undefined,
+    whatsapp: appSecret && verifyToken ? {
+      appSecret, verifyToken,
+      graphBase: url(env, 'WHATSAPP_GRAPH_BASE', 'https://graph.facebook.com')!,
+      graphVersion: env.WHATSAPP_GRAPH_VERSION?.trim() || 'v23.0',
+    } : undefined,
+  }
 }
 
 function readMasterKey(env: NodeJS.ProcessEnv, production: boolean, dataDir: string): Buffer {
@@ -141,5 +229,8 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     saspay: readSasPay(env, production),
     ocr: { enabled: env.AKILI_OCR !== 'off', maxPages: intIn(env.AKILI_OCR_MAX_PAGES, 10, 1, 50, 'AKILI_OCR_MAX_PAGES') },
     antivirus: env.CLAMAV_HOST?.trim() ? { host: env.CLAMAV_HOST.trim(), port: intIn(env.CLAMAV_PORT, 3310, 1, 65535, 'CLAMAV_PORT') } : undefined,
+    ai: readAi(env),
+    connectors: readConnectors(env),
+    mcpAllowPrivate: env.AKILI_MCP_ALLOW_PRIVATE === '1',
   }
 }

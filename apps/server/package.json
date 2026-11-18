@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "1.5.0",
     "@fastify/cookie": "11.0.2",
     "@fastify/helmet": "13.0.2",
     "@fastify/multipart": "9.2.1",
@@ -19,6 +20,7 @@
     "@fontsource/ibm-plex-serif": "5.2.7",
     "@tesseract.js-data/eng": "1.0.0",
     "@tesseract.js-data/fra": "1.0.0",
+    "ajv": "8.20.0",
     "exceljs": "4.4.0",
     "fastify": "5.6.1",
     "jszip": "3.10.1",

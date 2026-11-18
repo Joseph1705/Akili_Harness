@@ -24,6 +24,7 @@ import type { JobOutcome } from '../jobs.js'
 import { readDocument, UnreadableDocument, type ReadResult } from './extract.js'
 import { extractInvoiceFields, type ExtractedInvoice, type OrgIdentity } from './invoice-fields.js'
 import { parseReport, ReportParseError, type ActivityReport } from './parse-report.js'
+import { extractWithModel } from '../ai/extract.js'
 
 interface DocRow {
   id: string; org_id: string; agent_id: string; blob_id: string; filename: string; kind: FileKind; status: string
@@ -150,8 +151,14 @@ async function reviewPath(app: FastifyInstance, doc: DocRow, read: ReadResult, {
   await step('Lire', doc.filename, readNote)
 
   const identity = await orgIdentity(app, orgId)
-  const fields = extractInvoiceFields(read.text, identity)
-  const method = 'local'
+  // A language model proposes the fields only when the organization enabled it (rule 5); otherwise, or if it
+  // fails, the local reading is used. Either way a person reviews before anything is invoiced.
+  const viaModel = await extractWithModel(app, orgId, read.text, identity, { documentId: doc.id }).catch(error => {
+    app.log.warn({ document: doc.id, err: String(error) }, 'model extraction failed, using local reading')
+    return null
+  })
+  const fields = viaModel?.fields ?? extractInvoiceFields(read.text, identity)
+  const method = viaModel?.method ?? 'local'
   const usable = fields.lines.length > 0 || fields.total !== null || fields.subtotal !== null || fields.client.name !== null
   if (!usable) {
     const message = read.ocrUsed
