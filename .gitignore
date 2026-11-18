@@ -11,3 +11,6 @@ dist/
 
 # Personal Claude Code settings (machine-specific hooks)
 .claude/settings.local.json
+
+# CodeGraph index: local to each machine.
+.codegraph/
