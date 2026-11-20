@@ -27,15 +27,19 @@ export async function hasVectors(db: Db): Promise<boolean> {
   return vectorColumn
 }
 
-/** Whether this organization's knowledge may be embedded now, and how (rule 5 for external providers). */
-async function embeddingPlan(app: FastifyInstance, orgId: string): Promise<{ external: boolean; model: string } | null> {
+/**
+ * Whether this organization's knowledge may be embedded now, and how (rule 5 for external providers). The endpoint is
+ * kept with the decision: a service changed meanwhile in Administration › Clés API et services never receives text
+ * that was cleared (and masked, or not) for the previous one.
+ */
+async function embeddingPlan(app: FastifyInstance, orgId: string): Promise<{ external: boolean; model: string; endpoint: { baseUrl: string; apiKey: string | undefined } } | null> {
   const cfg = app.deps.config.ai.embeddings
   if (!cfg) return null
   const access = await aiAccess(app, orgId, 'chat')
   if (!access.settings.enabled) return null
   if (cfg.external && !access.externalConsent) return null
   if (access.settings.mode === 'local' && cfg.external) return null
-  return { external: cfg.external, model: cfg.model }
+  return { external: cfg.external, model: cfg.model, endpoint: { baseUrl: cfg.baseUrl, apiKey: cfg.apiKey } }
 }
 
 const vectorLiteral = (v: number[]) => `[${v.map(x => (Number.isFinite(x) ? x : 0)).join(',')}]`
@@ -75,7 +79,7 @@ export async function ingestKnowledge(app: FastifyInstance, orgId: string, docum
         return pseudo ? pseudo.mask(t) : t
       })
       vectors = []
-      for (let i = 0; i < inputs.length; i += 64) vectors.push(...await embed({ ...config.ai.embeddings!, model: plan.model }, inputs.slice(i, i + 64)))
+      for (let i = 0; i < inputs.length; i += 64) vectors.push(...await embed({ ...plan.endpoint, model: plan.model }, inputs.slice(i, i + 64)))
       embeddingModel = plan.model
     } catch (error) {
       app.log.warn({ document: documentId, err: String(error) }, 'knowledge embeddings failed, full-text only')
@@ -129,7 +133,7 @@ export async function searchKnowledge(app: FastifyInstance, orgId: string, quest
   if (plan && await hasVectors(db)) {
     try {
       const pseudo = plan.external ? await pseudonymizerFor(db, orgId) : null
-      const [vector] = await embed({ ...config.ai.embeddings!, model: plan.model }, [pseudo ? pseudo.mask(question) : question])
+      const [vector] = await embed({ ...plan.endpoint, model: plan.model }, [pseudo ? pseudo.mask(question) : question])
       add(await db.all(`${select} WHERE c.org_id = ? AND d.status = 'ready' AND c.embedding IS NOT NULL AND c.embedding_model = ?
         ORDER BY c.embedding OPERATOR(public.<=>) ?::public.vector, c.id LIMIT 20`, orgId, plan.model, vectorLiteral(vector!)))
     } catch (error) {

@@ -4,7 +4,7 @@
  * so a new key works at once, without a restart).
  */
 import type { Config } from '../config.js'
-import { readServices } from '../config.js'
+import { isOurNetworkAddress, readServices } from '../config.js'
 import type { Db } from '../db.js'
 import { openSecret, sealSecret } from '../security/secrets.js'
 import { SECTIONS, type SectionId } from './catalog.js'
@@ -43,6 +43,20 @@ export function sealSetting(config: Config, name: string, value: string): Buffer
 const UNREADABLE = 'Valeurs enregistrées illisibles avec la clé maître de ce serveur (a-t-elle changé ?) : saisissez-les à nouveau.'
 
 /**
+ * Rule 5: the .env switches that declare a model "ours" (AKILI_LOCAL_MODEL_EXTERNAL=0, AKILI_EMBEDDINGS_EXTERNAL=0)
+ * vouch for the .env address only. An address typed on the screen is judged by itself, like any address without a
+ * switch: a public one is an external provider (consent and pseudonymisation). "1" (always external) is stricter: kept.
+ */
+function judgeScreenAddresses(env: NodeJS.ProcessEnv, screen: Record<string, string>): NodeJS.ProcessEnv {
+  const out = { ...env }
+  if (screen.AKILI_LOCAL_MODEL_URL && out.AKILI_LOCAL_MODEL_EXTERNAL?.trim() !== '1') delete out.AKILI_LOCAL_MODEL_EXTERNAL
+  if (screen.AKILI_EMBEDDINGS_URL && out.AKILI_EMBEDDINGS_EXTERNAL?.trim() !== '1') {
+    out.AKILI_EMBEDDINGS_EXTERNAL = isOurNetworkAddress(screen.AKILI_EMBEDDINGS_URL) ? '0' : '1'
+  }
+  return out
+}
+
+/**
  * The variables in effect: the .env file, then the stored values section by section. A section whose stored values
  * are unreadable, or invalid with the rest, is left out (its .env values stay in effect) and its problem returned.
  */
@@ -55,7 +69,8 @@ export function resolveSettings(config: Config, stored: Pick<Stored, 'values' | 
     if (keys.some(k => stored.unreadable.includes(k))) { problems.set(section.id, UNREADABLE); continue }
     const mine = Object.fromEntries(keys.filter(k => k in stored.values).map(k => [k, stored.values[k]!]))
     if (Object.keys(mine).length === 0) continue
-    const env = { ...config.baseEnv, ...accepted, ...mine }
+    const screen = { ...accepted, ...mine }
+    const env = judgeScreenAddresses({ ...config.baseEnv, ...screen }, screen)
     const problem = section.check?.(env) ?? null
     if (problem) { problems.set(section.id, problem); continue }
     try {
@@ -65,7 +80,7 @@ export function resolveSettings(config: Config, stored: Pick<Stored, 'values' | 
       problems.set(section.id, 'Valeurs refusées : vérifiez-les.')
     }
   }
-  return { env: { ...config.baseEnv, ...accepted }, problems }
+  return { env: judgeScreenAddresses({ ...config.baseEnv, ...accepted }, accepted), problems }
 }
 
 const loaded = new WeakMap<Config, Map<SectionId, string>>()

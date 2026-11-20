@@ -118,7 +118,12 @@ Une clé d'IA présente ne suffit pas : chaque organisation doit encore activer 
 avant que la moindre donnée parte vers un fournisseur (règle 5).
 
 **Si la clé maître change** (`AKILI_MASTER_KEY`), les clés saisies à l'écran deviennent illisibles : l'écran le
-signale, il suffit de les coller à nouveau. Garder la clé maître en lieu sûr évite de devoir le faire.
+signale (« À corriger »). Sur chaque section concernée, « Tout retirer », puis coller à nouveau les valeurs. Garder la
+clé maître en lieu sûr évite de devoir le faire.
+
+**Pour passer une clé de `.env` à l'écran** : la coller à l'écran d'abord, puis la retirer de `.env`. Attention aux
+réglages qui vont par deux (ID et secret Google, secret et jeton WhatsApp, adresse et modèle) : n'en laisser qu'un
+dans `.env` empêche le serveur de démarrer. Retirer les deux de `.env`, ou aucun.
 
 ## 7. Avant la première vente
 

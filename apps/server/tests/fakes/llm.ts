@@ -70,6 +70,8 @@ export interface FakeOpenAi {
   url: string
   requests: Recorded[]
   chat: (body: Record<string, unknown>) => { status?: number; content?: string; tool?: { name: string; arguments: Record<string, unknown> } }
+  /** Called on each /embeddings request before answering (a test can change the server's settings meanwhile). */
+  onEmbeddings?: () => void
   close(): Promise<void>
 }
 
@@ -92,6 +94,7 @@ export async function startFakeOpenAi(): Promise<FakeOpenAi> {
     const body = raw ? JSON.parse(raw) as Record<string, unknown> : {}
     fake.requests.push({ path: req.url ?? '', headers: req.headers, body, raw })
     if (req.url === '/embeddings') {
+      fake.onEmbeddings?.()
       const input = body.input as string[]
       return json(res, 200, { object: 'list', model: body.model, data: input.map((t, index) => ({ object: 'embedding', index, embedding: fakeEmbedding(t) })) })
     }

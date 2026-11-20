@@ -125,6 +125,9 @@ async function announce(app: FastifyInstance, actor: string, ip: string, section
 
 export async function platformSettingsRoutes(app: FastifyInstance): Promise<void> {
   const { db, config } = app.deps
+  // Each save is e-mailed to every operator through the same mailbox as the login codes: a session that saved in a
+  // loop (stolen, or a script gone wrong) would use up its daily sending quota and lock everyone out.
+  const saves = new RateLimiter()
 
   app.get('/', async (request) => {
     platformAdminOf(request, config)
@@ -134,6 +137,7 @@ export async function platformSettingsRoutes(app: FastifyInstance): Promise<void
 
   app.put('/:section', async (request) => {
     const user = platformAdminOf(request, config)
+    if (!saves.take(`settings-save:${user.id}`, 30, 60 * 60_000)) throw new HttpError(429, 'rate_limited', 'Trop de modifications en une heure (30 au plus) : patientez un peu.')
     const section = sectionOf(Params.parse(request.params).section)
     const changes = normalizeChanges(section, Body.parse(request.body).values)
     const before = await loadStored(db, config)

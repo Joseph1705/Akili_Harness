@@ -145,9 +145,14 @@ function localModelIsExternal(env: NodeJS.ProcessEnv, raw: string): boolean {
   if (declared === '0') return false
   if (declared === '1') return true
   if (declared) fail('AKILI_LOCAL_MODEL_EXTERNAL', 'must be 0 (on our network) or 1 (external)')
+  return !isOurNetworkAddress(raw)
+}
+
+/** A loopback or private address, or a one-word host name (a container next to ours, e.g. `ollama`). */
+export function isOurNetworkAddress(raw: string): boolean {
   const host = new URL(raw).hostname.replace(/^\[|\]$/g, '')
-  if (isIP(host)) return !isPrivateAddress(host)
-  return !(host === 'localhost' || !host.includes('.'))
+  if (isIP(host)) return isPrivateAddress(host)
+  return host === 'localhost' || !host.includes('.')
 }
 
 function readConnectors(env: NodeJS.ProcessEnv): ConnectorConfig {

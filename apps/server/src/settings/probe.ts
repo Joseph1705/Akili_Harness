@@ -14,11 +14,13 @@ export interface ProbeResult { ok: boolean; message: string }
 
 const notSet = () => new HttpError(409, 'not_configured', "Ce service n'est pas encore réglé : enregistrez d'abord sa clé, puis testez-le.")
 
-function why(error: unknown, model: string): string {
+/** `typedAddress`: the address was typed by the operator too (other model, embeddings), so it may be the mistake. */
+function why(error: unknown, model: string, typedAddress: boolean): string {
   if (!(error instanceof ProviderError)) return 'erreur inattendue'
   switch (error.kind) {
     case 'auth': return 'clé refusée par le fournisseur'
-    case 'invalid': return `demande refusée${error.status ? ` (HTTP ${error.status})` : ''} : le nom du modèle « ${model} » est-il exact ?`
+    case 'invalid': return `demande refusée${error.status ? ` (HTTP ${error.status})` : ''} : `
+      + (typedAddress ? `vérifiez le nom du modèle « ${model} » et l'adresse de l'API (adresse de base, finissant en général par /v1)` : `le nom du modèle « ${model} » est-il exact ?`)
     case 'rate_limit': return 'limite atteinte ou crédit épuisé chez le fournisseur'
     case 'refusal': return 'le modèle a décliné la question de test'
     case 'unavailable': return 'fournisseur injoignable'
@@ -41,7 +43,7 @@ export async function probeModels(app: FastifyInstance, id: ProviderId): Promise
       })
     } catch (error) {
       if (!(error instanceof ProviderError && error.kind === 'refusal')) {
-        return { ok: false, message: `Échec avec le modèle ${tier}« ${model} » : ${why(error, model)}.` }
+        return { ok: false, message: `Échec avec le modèle ${tier}« ${model} » : ${why(error, model, id === 'local')}.` }
       }
     }
     answered.push(`${tier}« ${model} » en ${Date.now() - started} ms`)
@@ -57,7 +59,7 @@ export async function probeEmbeddings(config: Config): Promise<ProbeResult> {
     const [vector] = await embed(cfg, ['Test de connexion'])
     return { ok: true, message: `Le service répond : vecteurs de ${vector?.length ?? 0} dimensions, en ${Date.now() - started} ms.` }
   } catch (error) {
-    return { ok: false, message: `Échec avec le modèle « ${cfg.model} » : ${why(error, cfg.model)}.` }
+    return { ok: false, message: `Échec avec le modèle « ${cfg.model} » : ${why(error, cfg.model, true)}.` }
   }
 }
 

@@ -20,6 +20,16 @@ Conception : `docs/superpowers/specs/2026-11-20-platform-settings-design.md` · 
 - Une valeur enregistrée devenue inutilisable (clé maître changée, `.env` modifié) est ignorée au démarrage et
   signalée à l'écran : le serveur démarre quand même.
 - Restent dans `.env` : domaine, base, clé maître, envoi des e-mails (SMTP), adresses des administrateurs.
+- Revue de la branche avant la version, corrections testées :
+  - une adresse de modèle ou d'embeddings saisie à l'écran est jugée par elle-même : une adresse publique est toujours
+    un fournisseur externe (consentement et pseudonymisation), même si `.env` déclarait l'ancienne adresse « chez nous » ;
+  - un appel au modèle déjà en cours n'utilise jamais un fournisseur retiré, ou devenu externe pour une organisation
+    qui n'a pas consenti ; un document de la base de connaissances garde le service d'embeddings avec lequel il a commencé ;
+  - au plus 30 enregistrements par heure et par administrateur (chaque enregistrement envoie un e-mail) ;
+  - clés : espaces et caractères invisibles refusés ; adresses : https obligatoire hors de notre réseau, ni identifiants,
+    ni paramètres, ni adresses réservées du serveur ;
+  - « Copier » prévient quand le navigateur l'interdit (test par IP sans HTTPS) ; les gestionnaires de mots de passe ne
+    remplissent plus les champs de clé.
 
 ## 0.3.0 — 2026-11-18 · Harness complet
 

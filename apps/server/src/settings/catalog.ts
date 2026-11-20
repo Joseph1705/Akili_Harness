@@ -4,6 +4,7 @@
  * key, e-mail sending, nor the "this model runs on our network" switches (AKILI_LOCAL_MODEL_EXTERNAL,
  * AKILI_EMBEDDINGS_EXTERNAL) that would skip the organization's consent and pseudonymisation (rule 5).
  */
+import { isOurNetworkAddress } from '../config.js'
 import { badRequest } from '../errors.js'
 
 export type SectionId = 'anthropic' | 'deepseek' | 'other_model' | 'embeddings' | 'saspay' | 'google' | 'whatsapp' | 'platform'
@@ -109,7 +110,7 @@ export const SECTIONS: readonly SettingSection[] = [
   {
     id: 'google',
     title: 'Google (Gmail et Google Sheets)',
-    description: "Client OAuth « Application Web » créé dans Google Cloud Console, avec les API Gmail et Google Sheets activées. Chaque organisation connecte ensuite son propre compte Google dans ses paramètres.",
+    description: "Client OAuth « Application Web » créé dans Google Cloud Console, avec les API Gmail et Google Sheets activées. Chaque organisation connecte ensuite son propre compte Google dans ses paramètres. Changer de client plus tard oblige chaque organisation à reconnecter son compte.",
     testable: true,
     fields: [
       { key: 'GOOGLE_CLIENT_ID', label: 'ID client', kind: 'text', placeholder: '….apps.googleusercontent.com' },
@@ -165,12 +166,27 @@ export function normalizeChanges(section: SettingSection, values: Record<string,
   return changes
 }
 
+/** Link-local addresses (169.254.0.0/16, fe80::/10, also IPv4-mapped): the cloud metadata service lives there. */
+function isLinkLocal(hostname: string): boolean {
+  const host = hostname.replace(/^\[|\]$/g, '').toLowerCase()
+  return /^169\.254\./.test(host) || /^fe[89ab][0-9a-f]?:/.test(host) || /^::ffff:(169\.254\.|a9fe:)/.test(host)
+}
+
 function invalid(field: SettingField, value: string): string | null {
   switch (field.kind) {
+    case 'secret':
+      // API keys and secrets are printable ASCII: a space or an invisible character copied with them breaks every call.
+      return /^[\x21-\x7e]+$/.test(value) ? null : `« ${field.label} » contient un espace ou un caractère invisible : recopiez la clé depuis la console du fournisseur.`
     case 'url': {
       let url: URL
       try { url = new URL(value) } catch { return `« ${field.label} » doit être une adresse web complète (https://…).` }
-      return url.protocol === 'https:' || url.protocol === 'http:' ? null : `« ${field.label} » doit commencer par https://.`
+      if (url.protocol !== 'https:' && url.protocol !== 'http:') return `« ${field.label} » doit commencer par https://.`
+      if (url.username || url.password) return `« ${field.label} » ne doit pas contenir d'identifiant ni de mot de passe : mettez la clé dans le champ « Clé API ».`
+      if (url.search || url.hash) return `« ${field.label} » ne doit pas contenir de paramètres (?…) : indiquez seulement l'adresse de base de l'API.`
+      if (isLinkLocal(url.hostname)) return `« ${field.label} » désigne une adresse réservée du serveur : refusée.`
+      // In clear only inside our own network: elsewhere the key and the data would cross the Internet unencrypted.
+      if (url.protocol === 'http:' && !isOurNetworkAddress(value)) return `« ${field.label} » doit commencer par https:// (http:// seulement pour un service installé chez nous).`
+      return null
     }
     case 'email':
       return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? null : `« ${field.label} » doit être une adresse e-mail.`

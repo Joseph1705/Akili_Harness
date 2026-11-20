@@ -5,11 +5,14 @@
 import { randomBytes } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { afterEach, describe, expect, it } from 'vitest'
+import { AiUnavailable, aiAccess, generate } from '../src/ai/router.js'
+import { startRun } from '../src/ai/runs.js'
 import { buildApp } from '../src/app.js'
 import { loadConfig } from '../src/config.js'
+import { drainJobs } from '../src/jobs.js'
 import { startFakeOpenAi } from './fakes/llm.js'
 import { startFakeGoogle } from './fakes/services.js'
-import { as, createTestApp, eventually, login, onboardedOwner, ORIGIN, type TestContext } from './helpers.js'
+import { as, createTestApp, eventually, login, multipart, onboardedOwner, ORIGIN, type TestContext } from './helpers.js'
 
 const OPS = 'ops@akili.example'
 const SANDBOX = 'https://sandbox-api.saspay.me/api/v1'
@@ -127,6 +130,15 @@ describe('service keys from the interface', () => {
       ['platform', { AKILI_SUPPORT_EMAIL: 'pas-un-email' }],
       ['saspay', { SASPAY_BASE_URL: 'https://evil.example/api/v1' }],
       ['anthropic', { ANTHROPIC_API_KEY: 'sk-ant-start\nsk-ant-end-000000' }],
+      // Invisible or blank characters copied with a key would break every call to the provider.
+      ['anthropic', { ANTHROPIC_API_KEY: 'sk-ant-zero​width-000000000' }],
+      ['anthropic', { ANTHROPIC_API_KEY: 'sk-ant-no break-0000000000' }],
+      ['saspay', { SASPAY_API_KEY: 'sk_test inner space 0000000' }],
+      // A key must not travel in clear, nor an address carry a password or reach the cloud metadata service.
+      ['other_model', { AKILI_LOCAL_MODEL_URL: 'http://api.openai.com/v1', AKILI_LOCAL_MODEL_HEAVY: 'gpt-test' }],
+      ['embeddings', { AKILI_EMBEDDINGS_URL: 'https://user:pass@emb.example.com/v1', AKILI_EMBEDDINGS_MODEL: 'embed-test' }],
+      ['embeddings', { AKILI_EMBEDDINGS_URL: 'https://emb.example.com/v1?key=abc', AKILI_EMBEDDINGS_MODEL: 'embed-test' }],
+      ['other_model', { AKILI_LOCAL_MODEL_URL: 'http://169.254.169.254/latest', AKILI_LOCAL_MODEL_HEAVY: 'gpt-test' }],
     ]
     for (const [id, values] of refused) {
       const res = await ops('PUT', `/api/platform/settings/${id}`, { values })
@@ -201,6 +213,99 @@ describe('service keys from the interface', () => {
     expect(res.statusCode, res.body).toBe(200)
     expect(t!.config.supportEmail).toBe('aide@akili.example')
   }, 10_000)
+
+  it('judges an address typed here by itself, even when the .env file declares its model "ours" (rule 5)', async () => {
+    const ops = await operator({ AKILI_LOCAL_MODEL_EXTERNAL: '0', AKILI_EMBEDDINGS_EXTERNAL: '0' })
+    const local = await ops('PUT', '/api/platform/settings/other_model', { values: { AKILI_LOCAL_MODEL_URL: 'https://api.openai.com/v1', AKILI_LOCAL_MODEL_HEAVY: 'gpt-test' } })
+    expect(local.statusCode, local.body).toBe(200)
+    expect(t!.config.ai.local?.external).toBe(true)
+    expect(local.json().section.statusText).toContain('fournisseur externe')
+
+    expect((await ops('PUT', '/api/platform/settings/embeddings', { values: { AKILI_EMBEDDINGS_URL: 'https://api.openai.com/v1', AKILI_EMBEDDINGS_MODEL: 'embed-test' } })).statusCode).toBe(200)
+    expect(t!.config.ai.embeddings?.external).toBe(true)
+    // A service next to ours (a one-word host name, a container) is ours, as with the .env file.
+    expect((await ops('PUT', '/api/platform/settings/embeddings', { values: { AKILI_EMBEDDINGS_URL: 'http://embeddings:8080/v1' } })).statusCode).toBe(200)
+    expect(t!.config.ai.embeddings?.external).toBe(false)
+
+    const next = await restart(t!.config.baseEnv)
+    expect(next.config.ai.local?.external).toBe(true)
+  })
+
+  it('limits saves, since each one is e-mailed to every operator', async () => {
+    const ops = await operator()
+    for (let i = 0; i < 30; i++) {
+      expect((await ops('PUT', '/api/platform/settings/platform', { values: { AKILI_BRAND_NAME: `Nom ${i}` } })).statusCode).toBe(200)
+    }
+    expect((await ops('PUT', '/api/platform/settings/platform', { values: { AKILI_BRAND_NAME: 'Encore' } })).statusCode).toBe(429)
+    expect(t!.config.brand).toBe('Nom 29')
+  })
+})
+
+describe('a change while work is under way', () => {
+  const AI_ON = { enabled: true, mode: 'external', use_for_extraction: true, use_for_chat: true, whatsapp_drafts: false, monthly_token_limit: null }
+  const request = (model: string) => ({ model, system: 'Test.', maxTokens: 16, messages: [{ role: 'user' as const, content: [{ type: 'text' as const, text: 'Bonjour' }] }] })
+
+  it('stops a model call whose provider was removed meanwhile, with a clear error', async () => {
+    const fake = await startFakeOpenAi()
+    fakes.push(fake)
+    const ops = await operator({ DEEPSEEK_BASE_URL: fake.url })
+    expect((await ops('PUT', '/api/platform/settings/deepseek', { values: { DEEPSEEK_API_KEY: 'sk-deepseek-screen-only-000001' } })).statusCode).toBe(200)
+    const owner = await onboardedOwner(t!, 'owner@example.cd')
+    await owner.call('PUT', '/api/ai/settings', AI_ON)
+    await owner.call('POST', '/api/orgs/current/consents', { type: 'external_model', granted: true })
+    const access = await aiAccess(t!.app, owner.orgId)
+    expect(access.order).toEqual(['deepseek'])
+
+    expect((await ops('PUT', '/api/platform/settings/deepseek', { values: { DEEPSEEK_API_KEY: null } })).statusCode).toBe(200)
+    const run = await startRun(t!.db, { orgId: owner.orgId, purpose: 'chat' })
+    await expect(generate(t!.app, access, owner.orgId, run, 'light', request)).rejects.toBeInstanceOf(AiUnavailable)
+    expect(fake.requests).toEqual([])
+  })
+
+  it('never sends a call to a provider that became external meanwhile, for an organization that did not consent', async () => {
+    const fake = await startFakeOpenAi()
+    fakes.push(fake)
+    const ops = await operator({ AKILI_LOCAL_MODEL_URL: fake.url, AKILI_LOCAL_MODEL_HEAVY: 'local-model' })
+    const owner = await onboardedOwner(t!, 'owner@example.cd')
+    await owner.call('PUT', '/api/ai/settings', { ...AI_ON, mode: 'local' })
+    const access = await aiAccess(t!.app, owner.orgId)
+    expect(access).toMatchObject({ allowed: true, externalConsent: false, order: ['local'] })
+
+    expect((await ops('PUT', '/api/platform/settings/other_model', { values: { AKILI_LOCAL_MODEL_URL: 'https://models.example.com/v1' } })).statusCode).toBe(200)
+    const reached: string[] = []
+    const realFetch = globalThis.fetch
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input)
+      if (url.includes('models.example.com')) { reached.push(url); throw new TypeError('blocked by the test') }
+      return realFetch(input, init)
+    }) as typeof fetch
+    try {
+      const run = await startRun(t!.db, { orgId: owner.orgId, purpose: 'chat' })
+      await expect(generate(t!.app, access, owner.orgId, run, 'light', request)).rejects.toBeInstanceOf(AiUnavailable)
+    } finally {
+      globalThis.fetch = realFetch
+    }
+    expect(reached).toEqual([])
+  })
+
+  it('embeds a whole document with the service it started with', async () => {
+    const first = await startFakeOpenAi()
+    const second = await startFakeOpenAi()
+    fakes.push(first, second)
+    t = await createTestApp({ AKILI_PLATFORM_ADMINS: OPS, AKILI_EMBEDDINGS_URL: first.url, AKILI_EMBEDDINGS_MODEL: 'embed-test', AKILI_EMBEDDINGS_EXTERNAL: '1' })
+    const owner = await onboardedOwner(t, 'owner@example.cd')
+    await owner.call('PUT', '/api/ai/settings', AI_ON)
+    await owner.call('POST', '/api/orgs/current/consents', { type: 'external_model', granted: true })
+    // An operator points the embeddings elsewhere while the first batch of this document is being embedded.
+    first.onEmbeddings = () => { t!.config.ai = { ...t!.config.ai, embeddings: { ...t!.config.ai.embeddings!, baseUrl: second.url } } }
+    const text = Array.from({ length: 90 }, (_, i) => `SECTION ${i + 1}\n${'Le chantier fictif avance selon le planning prévu. '.repeat(17)}`).join('\n\n')
+    const body = multipart({}, { field: 'file', filename: 'long.txt', bytes: Buffer.from(text) })
+    const res = await t.app.inject({ method: 'POST', url: '/api/knowledge', headers: { origin: ORIGIN, cookie: owner.cookie, ...body.headers }, payload: body.payload })
+    expect(res.statusCode, res.body).toBe(200)
+    await drainJobs(t.app)
+    expect(first.requests.filter(r => r.path === '/embeddings').length).toBeGreaterThan(1)
+    expect(second.requests).toEqual([])
+  })
 })
 
 describe('testing a service from the screen', () => {
@@ -244,6 +349,17 @@ describe('testing a service from the screen', () => {
     expect(unknown.ok).toBe(false)
     expect(unknown.message).toContain('m-heavy')
     expect(unknown.message).not.toContain('m-light')
+  })
+
+  it('points at the address too when a typed address may be wrong', async () => {
+    const fake = await startFakeOpenAi()
+    fakes.push(fake)
+    const ops = await operator()
+    // A common mistake: pasting the full endpoint instead of the base address.
+    await ops('PUT', '/api/platform/settings/other_model', { values: { AKILI_LOCAL_MODEL_URL: `${fake.url}/chat/completions`, AKILI_LOCAL_MODEL_HEAVY: 'gpt-test' } })
+    const res = (await ops('POST', '/api/platform/settings/other_model/test', {})).json()
+    expect(res.ok).toBe(false)
+    expect(res.message).toContain("l'adresse")
   })
 
   it('checks the Google client ID and secret', async () => {

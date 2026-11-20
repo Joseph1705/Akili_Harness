@@ -86,8 +86,10 @@ function SectionCard({ section, onSaved }: { section: Section; onSaved: (s: Sect
   }
 
   function copy(text: string) {
-    // The clipboard needs HTTPS (or localhost): on a first test by IP, select the address by hand.
-    navigator.clipboard?.writeText(text).then(() => toast('Adresse copiée.'), () => toast('Copie impossible ici : sélectionnez l’adresse à la main.', 'err'))
+    // The clipboard needs HTTPS (or localhost): on a first test by IP it does not exist, select the address by hand.
+    const failed = () => toast('Copie impossible ici : sélectionnez l’adresse à la main.', 'err')
+    if (!navigator.clipboard) return failed()
+    navigator.clipboard.writeText(text).then(() => toast('Adresse copiée.'), failed)
   }
 
   const [tone, label] = BADGE[section.status]
@@ -115,7 +117,10 @@ function SectionCard({ section, onSaved }: { section: Section; onSaved: (s: Sect
                     className={`input${f.kind === 'secret' || f.kind === 'url' ? ' mono' : ''}`}
                     type={f.kind === 'secret' ? 'password' : f.kind === 'email' ? 'email' : 'text'}
                     inputMode={f.kind === 'int' ? 'numeric' : undefined}
-                    autoComplete="off"
+                    // A password manager must never fill a saved password in here: it would be saved as a key.
+                    autoComplete={f.kind === 'secret' ? 'new-password' : 'off'}
+                    data-1p-ignore=""
+                    data-lpignore="true"
                     spellCheck={false}
                     placeholder={f.kind === 'secret' && f.source !== 'none' ? `Enregistrée${f.hint ? ` (${f.hint})` : ''}` : f.placeholder ?? ''}
                     value={form[f.key] ?? ''}

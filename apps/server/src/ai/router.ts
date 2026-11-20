@@ -121,7 +121,14 @@ export async function generate(app: FastifyInstance, access: AiAccess, orgId: st
   const available = serverProviders(app)
   let lastError: unknown = null
   for (const id of access.order) {
-    const candidate = available[id]!
+    const candidate = available[id]
+    // The providers may have changed since `access` was decided (Administration › Clés API et services): one that is
+    // gone is skipped, and one that became external is used only with consent and outside "local" mode (rule 5).
+    if (!candidate) continue
+    if (candidate.provider.external && (!access.externalConsent || access.settings.mode === 'local')) {
+      await run.step('fallback', id, 'skipped', { reason: 'provider changed: now external, not allowed for this organization' })
+      continue
+    }
     const model = candidate.models[tier]
     const started = Date.now()
     try {
