@@ -1,12 +1,14 @@
 /**
  * Platform administration (our team only, AKILI_PLATFORM_ADMINS): organizations and balances, credit packages
- * and prices, SasPay payments, the credit ledger, allocations, refunds and corrections (all audited), and the
- * internal cost of AI with evaluations. Nothing here is visible to customers.
+ * and prices, SasPay payments, the credit ledger, allocations, refunds and corrections (all audited), the
+ * internal cost of AI with evaluations, and the keys of the services (PlatformSettings). Nothing here is visible
+ * to customers.
  */
 import { useCallback, useEffect, useState } from 'react'
 import { ago, api, ApiError, money, uuid } from '../api'
 import { Shell } from '../components/Shell'
 import { useSession } from '../state'
+import { PlatformSettings } from './PlatformSettings'
 
 interface Org { id: string; name: string; kind: string; plan: string; city: string | null; created_at: string; onboarding_done_at: string | null; balance: number; total_purchased: number; total_consumed: number; members: number; documents: number; documents_30d: number; owner_email: string | null }
 interface Pack { id: string; name: string; credits: number; price_cents: number | null; currency: 'USD' | 'CDF'; description: string | null; active: boolean; promotional: boolean; sort_order: number }
@@ -14,7 +16,7 @@ interface Payment { id: string; org_name: string; package_name: string; credits:
 interface Tx { id: string; org_name: string; type: string; amount: number; balance_before: number; balance_after: number; operation_key: string; payment_reference: string | null; reason: string | null; created_at: string; actor_email: string | null }
 interface Ai { days: Array<{ day: string; runs: number; cost_micro_usd: number; errors: number }>; models: Array<{ provider: string; model: string; runs: number; cost_micro_usd: number; tokens: number }>; orgs: Array<{ name: string; runs: number; cost_micro_usd: number; extractions: number }>; errors: Array<{ purpose: string; provider: string | null; model: string | null; error: string | null; created_at: string }>; evals: Array<{ id: string; method: string; cases: number; score: string; created_at: string }> }
 
-type Tab = 'orgs' | 'packages' | 'payments' | 'ledger' | 'ai'
+type Tab = 'orgs' | 'packages' | 'payments' | 'ledger' | 'ai' | 'settings'
 const TX: Record<string, string> = { purchase: 'Achat', consumption: 'Facture générée', refund: 'Remboursement', admin_allocation: 'Allocation', admin_correction: 'Correction' }
 const usd = (micro: number) => `${(micro / 1_000_000).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} USD`
 
@@ -23,7 +25,8 @@ export function Platform() {
   return (
     <Shell crumb="Plateforme" title="Administration">
       <div className="page stack" style={{ gap: 16 }}>
-        <div className="tabs" role="tablist" style={{ flexWrap: 'wrap' }}>{([['orgs', 'Organisations'], ['packages', 'Paquets et prix'], ['payments', 'Paiements'], ['ledger', 'Registre des crédits'], ['ai', 'Coûts IA et évaluations']] as const).map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{l}</button>)}</div>
+        <div className="tabs" role="tablist" style={{ flexWrap: 'wrap' }}>{([['orgs', 'Organisations'], ['packages', 'Paquets et prix'], ['payments', 'Paiements'], ['ledger', 'Registre des crédits'], ['ai', 'Coûts IA et évaluations'], ['settings', 'Clés API et services']] as const).map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{l}</button>)}</div>
+        {tab === 'settings' && <PlatformSettings />}
         {tab === 'orgs' && <Orgs />}
         {tab === 'packages' && <Packages />}
         {tab === 'payments' && <Payments />}

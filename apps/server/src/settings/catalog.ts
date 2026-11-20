@@ -101,7 +101,7 @@ export const SECTIONS: readonly SettingSection[] = [
       { key: 'SASPAY_API_KEY', label: 'Clé API', kind: 'secret', placeholder: 'sk_live_… ou sk_test_…' },
       { key: 'SASPAY_WEBHOOK_SECRET', label: 'Secret de signature du webhook', kind: 'secret', help: 'Sans lui, les paiements sont quand même vérifiés auprès de SasPay, toutes les 3 minutes.' },
       {
-        key: 'SASPAY_BASE_URL', label: 'Environnement', kind: 'select',
+        key: 'SASPAY_BASE_URL', label: 'Environnement', kind: 'select', placeholder: 'Par défaut : réel (argent réel)',
         options: [{ value: SASPAY_LIVE, label: 'Réel (argent réel)' }, { value: SASPAY_SANDBOX, label: 'Bac à sable (test, sans argent réel)' }],
       },
     ],
