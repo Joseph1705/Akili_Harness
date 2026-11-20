@@ -3,7 +3,7 @@
 Plateforme d'agents IA pour les entreprises et les cabinets comptables africains (RDC d'abord), construite sur
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (MIT) **sans modifier son cœur**.
 Mission : [`DIRECTIVES.md`](DIRECTIVES.md). Directives d'origine : [`PROMPT_ULTIME_HARNESS.md`](PROMPT_ULTIME_HARNESS.md).
-Règles : [`CLAUDE.md`](CLAUDE.md). Versions : [`CHANGELOG.md`](CHANGELOG.md) (actuelle : 0.3.0).
+Règles : [`CLAUDE.md`](CLAUDE.md). Versions : [`CHANGELOG.md`](CHANGELOG.md) (actuelle : 0.4.0).
 
 ## Ce que fait le produit
 
@@ -35,7 +35,8 @@ exemples) : [`docs/credits-technique.md`](docs/credits-technique.md). Décisions
 ## Mettre en ligne
 
 [`docs/guides/deploiement.md`](docs/guides/deploiement.md) : `cp .env.example .env`, remplir, puis
-`docker compose up -d --build` (Caddy + application + PostgreSQL avec pgvector).
+`docker compose up -d --build` (Caddy + application + PostgreSQL avec pgvector). Les clés des services (IA, SasPay,
+Google, WhatsApp) se collent ensuite dans le navigateur : **Administration › Clés API et services**.
 
 ## Développer en local
 

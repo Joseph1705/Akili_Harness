@@ -3,6 +3,24 @@
 Le numéro de version s'affiche dans l'écran « À propos ». Tant que DeepSeek Harness est en préversion et que
 l'intégration DGI n'est pas validée, les versions restent en 0.x et chaque facture porte « Document non fiscal ».
 
+## 0.4.0 — 2026-11-20 · Clés API et services depuis l'interface
+
+Conception : `docs/superpowers/specs/2026-11-20-platform-settings-design.md` · Décision : ADR 009.
+
+- Nouvel onglet **Administration › Clés API et services** (opérateurs de la plateforme seulement) : Claude, DeepSeek,
+  un autre modèle compatible OpenAI (OpenAI, Mistral, Gemini, Groq, Ollama), la recherche par le sens, SasPay (réel
+  ou bac à sable), Google (Gmail, Sheets), WhatsApp, et les textes de la plateforme (nom affiché, adresse d'aide,
+  crédits offerts). Plus besoin d'éditer `.env` ni de relancer le serveur pour brancher un service.
+- Clés chiffrées en base avec la clé maître, prises en compte tout de suite, jamais réaffichées (4 derniers caractères
+  seulement). Une valeur saisie à l'écran l'emporte sur `.env` ; « Retirer » revient à la valeur du fichier.
+- Boutons « Tester » : modèles léger et lourd, embeddings, identifiants Google ; la réponse dit en clair ce qui ne va
+  pas (clé refusée, nom de modèle inconnu…). Au plus 10 tests par 10 minutes et par personne.
+- Chaque modification est inscrite au journal d'audit (noms des champs, jamais les valeurs) et signalée par e-mail à
+  tous les administrateurs.
+- Une valeur enregistrée devenue inutilisable (clé maître changée, `.env` modifié) est ignorée au démarrage et
+  signalée à l'écran : le serveur démarre quand même.
+- Restent dans `.env` : domaine, base, clé maître, envoi des e-mails (SMTP), adresses des administrateurs.
+
 ## 0.3.0 — 2026-11-18 · Harness complet
 
 Mission : `DIRECTIVES.md`. Conception : `docs/superpowers/specs/2026-11-17-mission-harness-v1-design.md`.

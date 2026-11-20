@@ -21,7 +21,7 @@ import { mcpRoutes } from './mcp/routes.js'
 import { connectorRoutes, whatsappRoutes, whatsappWebhookRoutes } from './connectors/routes.js'
 
 const UNSAFE = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
-export const APP_VERSION = '0.3.0'
+export const APP_VERSION = '0.4.0'
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   const { db, config } = app.deps

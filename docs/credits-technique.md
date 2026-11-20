@@ -1,4 +1,4 @@
-# Crédits et paiements : référence technique (version 0.3.0)
+# Crédits et paiements : référence technique (version 0.4.0)
 
 Pour les développeurs. Explication simple : [`guides/credits.md`](guides/credits.md). Décision : ADR 007.
 Code : `apps/server/src/billing/wallet.ts` (portefeuille), `credits.ts`, `billing/payments.ts`, `billing/saspay.ts`,

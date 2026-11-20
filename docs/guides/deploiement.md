@@ -90,24 +90,35 @@ Caddy obtient le certificat HTTPS tout seul (quelques secondes) et le renouvelle
 | Sauvegarde manuelle | `./deploy/backup.sh` |
 | Sauvegarde chaque nuit à 2 h | `crontab -e`, puis `0 2 * * * /opt/akili/deploy/backup.sh >> /var/log/akili-backup.log 2>&1` |
 | Créditer une entreprise (paiement reçu autrement, geste commercial) | Menu **Administration** (adresses listées dans `AKILI_PLATFORM_ADMINS`) |
+| Ajouter ou changer une clé (IA, SasPay, Google, WhatsApp) | Menu **Administration › Clés API et services** : aucune commande |
 
 Les sauvegardes restent sur le VPS (14 jours). Étape suivante : copie chiffrée chez un autre fournisseur (directive 4.4).
 
-## 6. Brancher les services (facultatif)
+## 6. Brancher les services (facultatif) — depuis le navigateur
 
-Chaque service se règle dans `.env`, puis `docker compose up -d` pour en tenir compte. Sans réglage, l'application
-affiche « non configuré » : rien n'est jamais simulé. `app.votre-domaine.com` est à remplacer par le vrai domaine.
+Plus besoin de toucher au serveur : connecté avec une adresse de `AKILI_PLATFORM_ADMINS`, ouvrir
+**Administration › Clés API et services**, coller la clé, « Enregistrer ». Elle est chiffrée, prise en compte tout de
+suite (sans redémarrage) et n'est plus jamais affichée en entier. « Tester » vérifie les clés d'IA et de Google.
+Chaque modification est inscrite au journal et signalée par e-mail à tous les administrateurs.
 
-| Service | Variables | À déclarer chez le fournisseur |
-|---|---|---|
-| Achat de crédits (SasPay) | `SASPAY_API_KEY`, `SASPAY_WEBHOOK_SECRET` | URL du webhook : `https://app.votre-domaine.com/api/webhooks/saspay` |
-| IA Claude (offre Entreprise) | `ANTHROPIC_API_KEY` | — |
-| IA DeepSeek (offre Entrepreneur individuel) | `DEEPSEEK_API_KEY` | — |
-| Gmail et Google Sheets | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Client OAuth « Application Web », URI de redirection : `https://app.votre-domaine.com/api/connectors/google/callback` |
-| WhatsApp Business | `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` | URL de rappel : `https://app.votre-domaine.com/api/webhooks/whatsapp`, avec le même jeton de vérification |
+L'écran affiche aussi les adresses à déclarer chez chaque fournisseur (bouton « Copier ») :
+
+| Service | À déclarer chez le fournisseur |
+|---|---|
+| Achat de crédits (SasPay) | URL du webhook : `https://app.votre-domaine.com/api/webhooks/saspay` |
+| IA : Claude, DeepSeek, autre modèle compatible OpenAI (OpenAI, Mistral, Gemini, Groq, Ollama) | — |
+| Gmail et Google Sheets | Client OAuth « Application Web », URI de redirection : `https://app.votre-domaine.com/api/connectors/google/callback` |
+| WhatsApp Business | URL de rappel : `https://app.votre-domaine.com/api/webhooks/whatsapp`, avec le même jeton de vérification |
+
+Sans réglage, l'application affiche « non configuré » : rien n'est jamais simulé. Les mêmes clés peuvent encore être
+mises dans `.env` (variables décrites dans `.env.example`, puis `docker compose up -d`) : une valeur saisie à l'écran
+l'emporte, et « Retirer » revient à celle du fichier.
 
 Une clé d'IA présente ne suffit pas : chaque organisation doit encore activer l'IA et donner son consentement
 avant que la moindre donnée parte vers un fournisseur (règle 5).
+
+**Si la clé maître change** (`AKILI_MASTER_KEY`), les clés saisies à l'écran deviennent illisibles : l'écran le
+signale, il suffit de les coller à nouveau. Garder la clé maître en lieu sûr évite de devoir le faire.
 
 ## 7. Avant la première vente
 

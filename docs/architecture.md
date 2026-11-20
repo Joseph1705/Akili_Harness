@@ -1,4 +1,4 @@
-# Architecture technique (version 0.3.0)
+# Architecture technique (version 0.4.0)
 
 Pour qui : les développeurs et l'équipe technique. Les règles absolues sont dans [`CLAUDE.md`](../CLAUDE.md),
 les décisions dans [`docs/decisions/`](decisions/), la mission dans [`DIRECTIVES.md`](../DIRECTIVES.md).
@@ -18,7 +18,9 @@ Navigateur ──HTTPS──▶ Caddy ──▶ app (Fastify : API /api + interf
 ```
 
 - **Production** : `docker compose up -d --build` (guide : [`guides/deploiement.md`](guides/deploiement.md)).
-  Réglages : [`.env.example`](../.env.example).
+  Réglages : [`.env.example`](../.env.example). Les clés des services (IA, SasPay, Google, WhatsApp, textes de la
+  plateforme) se règlent aussi dans **Administration › Clés API et services** : chiffrées en base, elles l'emportent
+  sur `.env` et s'appliquent sans redémarrage (ADR 009).
 - **DeepSeek Harness** (`vendor/deepseek-harness`, figé en 0.2.2-rc.1) n'est pas modifié. Il sert au parcours
   local `pnpm dsh` avec notre plugin `plugins/credits` et la surcouche `config/akili.patch.yml`. Le harness
   d'agents de l'application est écrit dans `apps/server` (ADR 008).
@@ -35,6 +37,7 @@ Navigateur ──HTTPS──▶ Caddy ──▶ app (Fastify : API /api + interf
 | `invoicing/` | clients, contrats, calcul en entiers, numérotation sans trou, PDF « Document non fiscal », partage |
 | `billing/` | portefeuille et registre de crédits (`wallet.ts`), SasPay (`saspay.ts`, `payments.ts`) |
 | `credits.ts`, `platform.ts` | écrans Crédits et Administration (paquets, allocations, remboursements, corrections, coûts IA, évaluations) |
+| `settings/` | Administration › Clés API et services : catalogue des réglages permis, stockage chiffré (`platform_settings`), application à chaud, tests de connexion |
 | `ai/` | routage des modèles, prompts versionnés, pseudonymisation, cache, outils, validations humaines, traces |
 | `knowledge/` | base de connaissances : ingestion, découpage, recherche hybride |
 | `mcp/` | serveurs MCP distants : découverte, validation, appels |
