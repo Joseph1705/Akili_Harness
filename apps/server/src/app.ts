@@ -11,6 +11,7 @@ import type { Db } from './db.js'
 import { HttpError } from './errors.js'
 import { registerRoutes } from './routes.js'
 import { createMailer, type Mailer } from './auth/mailer.js'
+import { reloadSettings } from './settings/store.js'
 
 export interface AppDeps {
   config: Config
@@ -39,6 +40,9 @@ export async function buildApp(input: AppDeps): Promise<FastifyInstance> {
     trustProxy: input.config.env === 'production',
   })
   app.decorate('deps', deps)
+  // Keys saved in Administration › Clés API et services, over the .env file. Values that cannot be used are left out
+  // (and shown there): a bad saved value never stops the server.
+  await reloadSettings(deps, message => app.log.warn(message))
 
   await app.register(helmet, {
     contentSecurityPolicy: {

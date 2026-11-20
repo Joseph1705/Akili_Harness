@@ -13,6 +13,7 @@ import { invoiceRoutes, publicInvoiceRoutes } from './invoicing/routes.js'
 import { clientRoutes } from './invoicing/client-routes.js'
 import { sessionRoutes } from './sessions/routes.js'
 import { platformRoutes } from './platform.js'
+import { platformSettingsRoutes } from './settings/routes.js'
 import { billingRoutes, sasPayWebhookRoutes } from './billing/payments.js'
 import { aiRoutes } from './ai/routes.js'
 import { knowledgeRoutes } from './knowledge/routes.js'
@@ -72,6 +73,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   await app.register(clientRoutes)
   await app.register(sessionRoutes)
   await app.register(platformRoutes, { prefix: '/platform' })
+  await app.register(platformSettingsRoutes, { prefix: '/platform/settings' })
   await app.register(billingRoutes, { prefix: '/billing' })
   await app.register(sasPayWebhookRoutes, { prefix: '/webhooks' })
   await app.register(whatsappWebhookRoutes, { prefix: '/webhooks' })

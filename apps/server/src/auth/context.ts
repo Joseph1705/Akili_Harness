@@ -1,6 +1,7 @@
 /** Request context: the logged-in user, the session, and the current organization with the member's role. */
 import type { FastifyReply, FastifyRequest } from 'fastify'
-import { HttpError, forbidden } from '../errors.js'
+import type { Config } from '../config.js'
+import { HttpError, forbidden, notFound } from '../errors.js'
 
 export type Role = 'owner' | 'admin' | 'operator' | 'reader' | 'accountant'
 
@@ -41,6 +42,13 @@ export const CAN = {
 export function userOf(request: FastifyRequest): User {
   if (!request.user) throw new HttpError(401, 'unauthenticated', 'Connectez-vous pour continuer.')
   return request.user
+}
+
+/** A platform operator (AKILI_PLATFORM_ADMINS). Not a 403: the platform area does not exist for anyone else. */
+export function platformAdminOf(request: FastifyRequest, config: Pick<Config, 'platformAdmins'>): User {
+  const user = userOf(request)
+  if (!config.platformAdmins.includes(user.email)) throw notFound('Page')
+  return user
 }
 
 export function orgOf(request: FastifyRequest, allowed: readonly Role[] = CAN.read): OrgContext {

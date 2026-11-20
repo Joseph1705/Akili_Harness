@@ -713,6 +713,20 @@ export const MIGRATIONS: Array<{ version: number; name: string; sql: string }> =
   CREATE INDEX whatsapp_messages_conversation ON whatsapp_messages (org_id, conversation_id, created_at);
   `,
   },
+  {
+    version: 6,
+    name: 'service keys set from the interface',
+    sql: `
+  -- Administration › Clés API et services: one row per setting, named after its .env variable, the value encrypted
+  -- with a key derived from the master key (settings/store.ts). Platform-wide: no organization owns these rows.
+  CREATE TABLE platform_settings (
+    name text PRIMARY KEY CHECK (name ~ '^[A-Z][A-Z0-9_]*$'),
+    value bytea NOT NULL,
+    updated_by uuid REFERENCES users (id),
+    updated_at timestamptz NOT NULL DEFAULT now()
+  );
+  `,
+  },
 ]
 
 export async function migrate(db: Db): Promise<void> {

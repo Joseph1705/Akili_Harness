@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
 import { audit } from './audit.js'
-import { userOf } from './auth/context.js'
+import { platformAdminOf } from './auth/context.js'
 import { resumeWaitingDocuments } from './credits.js'
 import { HttpError, notFound } from './errors.js'
 import { applyCredit } from './billing/wallet.js'
@@ -31,12 +31,7 @@ const PackageInput = z.object({
 
 export async function platformRoutes(app: FastifyInstance): Promise<void> {
   const { db, config } = app.deps
-  const admin = (request: FastifyRequest) => {
-    const user = userOf(request)
-    // Not a 403: the platform area does not exist for anyone else.
-    if (!config.platformAdmins.includes(user.email)) throw notFound('Page')
-    return user
-  }
+  const admin = (request: FastifyRequest) => platformAdminOf(request, config)
   /** The operator may send an Idempotency-Key so a double click never allocates twice. */
   const opKey = (request: FastifyRequest, prefix: string) => {
     const key = request.headers['idempotency-key']

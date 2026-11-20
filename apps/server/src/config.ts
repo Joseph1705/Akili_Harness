@@ -16,8 +16,31 @@ export interface SmtpConfig {
   from: string
 }
 
-export interface Config {
+/**
+ * The services the platform operators may also set from Administration › Clés API et services (settings/catalog.ts).
+ * Computed from a table of variables, so the values saved there can be laid over the .env file (settings/store.ts)
+ * and replace these fields in the running server; every module reads them on each request.
+ */
+export interface ServiceConfig {
+  /** Product name shown in the interface; [NOM_MARQUE] until the founder chooses (directive). */
+  brand: string
+  /** Shown to organizations that need credits or help, until payment is integrated. */
+  supportEmail: string | undefined
+  /** Credits given to each new organization. */
+  signupCredits: number
+  /** Which model providers are configured (values never exposed). */
+  models: { deepseek: boolean; anthropic: boolean }
+  /** SasPay credentials; undefined: online payment unavailable (never simulated). */
+  saspay: { baseUrl: string; apiKey: string; webhookSecret: string | undefined } | undefined
+  /** Language models, embeddings and connectors available on this server. */
+  ai: AiConfig
+  connectors: ConnectorConfig
+}
+
+export interface Config extends ServiceConfig {
   env: 'development' | 'production' | 'test'
+  /** The variables this configuration was read from (the .env file in production), to lay the screen's values over. */
+  baseEnv: Readonly<NodeJS.ProcessEnv>
   host: string
   port: number
   databaseUrl: string
@@ -30,29 +53,16 @@ export interface Config {
   cookieSecure: boolean
   /** Where the data is hosted, shown in the interface (directive 4.4: the real region, never "Africa" by default). */
   hostingLabel: string
-  /** Product name shown in the interface; [NOM_MARQUE] until the founder chooses (directive). */
-  brand: string
   /** Undefined in development: login codes go to the server console only. */
   smtp: SmtpConfig | undefined
   /** E-mail addresses of the platform operators (us): they credit organizations until payment is integrated. */
   platformAdmins: string[]
-  /** Shown to organizations that need credits or help, until payment is integrated. */
-  supportEmail: string | undefined
-  /** Credits given to each new organization. */
-  signupCredits: number
   /** Built web interface to serve, when present. */
   webDist: string | undefined
-  /** Model keys present in the environment (values never stored here). */
-  models: { deepseek: boolean; anthropic: boolean }
-  /** SasPay credentials; undefined: online payment unavailable (never simulated). */
-  saspay: { baseUrl: string; apiKey: string; webhookSecret: string | undefined } | undefined
   /** OCR of scans and photos, on this server. */
   ocr: { enabled: boolean; maxPages: number }
   /** ClamAV daemon scanning every upload; undefined: not configured. */
   antivirus: { host: string; port: number } | undefined
-  /** Language models, embeddings and connectors available on this server (keys stay in the environment). */
-  ai: AiConfig
-  connectors: ConnectorConfig
   /** MCP servers on private networks (self-hosted installs only). Off by default: SSRF protection. */
   mcpAllowPrivate: boolean
   /** Days AI prompt and answer excerpts are kept in the logs (the counts of each run are kept). */
@@ -216,6 +226,22 @@ function readSmtp(env: NodeJS.ProcessEnv, production: boolean): SmtpConfig | und
   }
 }
 
+/** The services' settings from a table of variables; throws like loadConfig when one is invalid. */
+export function readServices(env: NodeJS.ProcessEnv, production: boolean): ServiceConfig {
+  const signupCredits = Number(env.AKILI_SIGNUP_CREDITS ?? 10)
+  if (!Number.isInteger(signupCredits) || signupCredits < 0) fail('AKILI_SIGNUP_CREDITS', 'must be an integer >= 0')
+  const ai = readAi(env)
+  return {
+    brand: env.AKILI_BRAND_NAME?.trim() || 'Akili',
+    supportEmail: env.AKILI_SUPPORT_EMAIL?.trim() || undefined,
+    signupCredits,
+    models: { deepseek: Boolean(ai.deepseek), anthropic: Boolean(ai.anthropic) },
+    saspay: readSasPay(env, production),
+    ai,
+    connectors: readConnectors(env),
+  }
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv): Config {
   const nodeEnv = env.NODE_ENV === 'production' ? 'production' : env.NODE_ENV === 'test' ? 'test' : 'development'
   const production = nodeEnv === 'production'
@@ -230,10 +256,10 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
   if (production && origin.protocol !== 'https:' && env.AKILI_ALLOW_HTTP !== '1') {
     fail('AKILI_PUBLIC_ORIGIN', 'must use https in production (set AKILI_ALLOW_HTTP=1 only for a first test by IP)')
   }
-  const signupCredits = Number(env.AKILI_SIGNUP_CREDITS ?? 10)
-  if (!Number.isInteger(signupCredits) || signupCredits < 0) fail('AKILI_SIGNUP_CREDITS', 'must be an integer >= 0')
   return {
+    ...readServices(env, production),
     env: nodeEnv,
+    baseEnv: Object.freeze({ ...env }),
     host: env.HOST ?? (production ? '0.0.0.0' : '127.0.0.1'),
     port,
     databaseUrl,
@@ -242,18 +268,11 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     publicOrigin: origin.origin,
     cookieSecure: origin.protocol === 'https:',
     hostingLabel: env.AKILI_HOSTING_LABEL ?? (production ? fail('AKILI_HOSTING_LABEL', 'is required in production (real hosting region, e.g. "Hébergé en France")') : 'Serveur de développement'),
-    brand: env.AKILI_BRAND_NAME?.trim() || 'Akili',
     smtp: readSmtp(env, production),
     platformAdmins: (env.AKILI_PLATFORM_ADMINS ?? '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean),
-    signupCredits,
-    supportEmail: env.AKILI_SUPPORT_EMAIL?.trim() || undefined,
     webDist: env.AKILI_WEB_DIST,
-    models: { deepseek: Boolean(env.DEEPSEEK_API_KEY), anthropic: Boolean(env.ANTHROPIC_API_KEY) },
-    saspay: readSasPay(env, production),
     ocr: { enabled: env.AKILI_OCR !== 'off', maxPages: intIn(env.AKILI_OCR_MAX_PAGES, 10, 1, 50, 'AKILI_OCR_MAX_PAGES') },
     antivirus: env.CLAMAV_HOST?.trim() ? { host: env.CLAMAV_HOST.trim(), port: intIn(env.CLAMAV_PORT, 3310, 1, 65535, 'CLAMAV_PORT') } : undefined,
-    ai: readAi(env),
-    connectors: readConnectors(env),
     mcpAllowPrivate: env.AKILI_MCP_ALLOW_PRIVATE === '1',
     aiLogRetentionDays: intIn(env.AKILI_AI_LOG_RETENTION_DAYS, 90, 1, 3650, 'AKILI_AI_LOG_RETENTION_DAYS'),
   }
