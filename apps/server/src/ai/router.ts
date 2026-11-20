@@ -38,9 +38,12 @@ export async function aiSettings(db: Db, orgId: string): Promise<AiSettings> {
 
 interface Candidate { provider: ModelProvider; models: { light: string; heavy: string } }
 
-/** Providers configured on this server, built once per process. */
+/**
+ * Providers configured on this server, built once per configuration of the models: a key saved in Administration ›
+ * Clés API et services replaces `config.ai`, so the clients are rebuilt with it on the next call.
+ */
 const providerCache = new WeakMap<object, Partial<Record<ProviderId, Candidate>>>()
-function serverProviders(app: FastifyInstance): Partial<Record<ProviderId, Candidate>> {
+export function serverProviders(app: FastifyInstance): Partial<Record<ProviderId, Candidate>> {
   const cfg = app.deps.config.ai
   let found = providerCache.get(cfg)
   if (!found) {

@@ -8,9 +8,11 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { audit } from '../audit.js'
 import { platformAdminOf } from '../auth/context.js'
+import { RateLimiter } from '../auth/rate-limit.js'
 import type { Config } from '../config.js'
-import { badRequest, notFound } from '../errors.js'
+import { badRequest, HttpError, notFound } from '../errors.js'
 import { SASPAY_LIVE, SASPAY_SANDBOX, SECTIONS, normalizeChanges, type SectionId, type SettingSection } from './catalog.js'
+import { probeEmbeddings, probeGoogle, probeModels, type ProbeResult } from './probe.js'
 import { loadStored, reloadSettings, resolveSettings, sealSetting, storedProblems, type Stored } from './store.js'
 
 const Params = z.object({ section: z.string().max(40) })
@@ -163,7 +165,25 @@ export async function platformSettingsRoutes(app: FastifyInstance): Promise<void
     const set = keys.filter(k => changes.get(k) !== null)
     const removed = keys.filter(k => changes.get(k) === null)
     await audit(db, { orgId: null, userId: user.id }, 'platform.settings_updated', 'platform_settings', section.id, { set, removed })
-    await announce(app, user.email, request.ip, section, set, removed)
+    // Sent after answering: a slow or broken mail server must not hold the save (the audit entry is already written).
+    announce(app, user.email, request.ip, section, set, removed).catch(error => app.log.error({ err: String(error) }, 'settings change notice failed'))
     return { section: sectionView(config, await loadStored(db, config), section) }
+  })
+
+  /** Each test is a real (tiny) call to a paid service: a few per person, then a pause. */
+  const tests = new RateLimiter()
+  const PROVIDER: Partial<Record<SectionId, 'anthropic' | 'deepseek' | 'local'>> = { anthropic: 'anthropic', deepseek: 'deepseek', other_model: 'local' }
+
+  app.post('/:section/test', async (request) => {
+    const user = platformAdminOf(request, config)
+    const section = sectionOf(Params.parse(request.params).section)
+    if (!section.testable) throw notFound('Test')
+    if (!tests.take(`settings-test:${user.id}`, 10, 10 * 60_000)) throw new HttpError(429, 'rate_limited', 'Trop de tests à la suite. Patientez quelques minutes.')
+    const provider = PROVIDER[section.id]
+    const result: ProbeResult = provider ? await probeModels(app, provider)
+      : section.id === 'embeddings' ? await probeEmbeddings(config)
+        : await probeGoogle(config)
+    await audit(db, { orgId: null, userId: user.id }, 'platform.settings_tested', 'platform_settings', section.id, { ok: result.ok })
+    return result
   })
 }
